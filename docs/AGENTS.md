@@ -2,6 +2,7 @@
 
 このプロジェクトで作業するAIエージェント共通のルールです。
 各ドキュメントはファイル名ではなくパスで指定しています。記載のパスを直接開いてください。
+パスはすべてリポジトリのルートを基準とします。
 
 ## プロジェクト概要
 
@@ -18,10 +19,12 @@
 
 ## ドキュメントの場所
 
+`docs/` 配下の索引を兼ねています。詳細ルールや仕様は各ファイルを直接確認してください。
+
 | 内容 | パス |
 |---|---|
 | 仕様の正（何を作るか） | `docs/product-requirements.md` |
-| docs 配下の索引 | `docs/README.md` |
+| AI 向けルール・docs 配下の索引 | `docs/AGENTS.md` |
 | レイヤー分割・依存の向き | `docs/skills/clean-architecture/SKILL.md` |
 | Widget・状態管理・コメント方針 | `docs/skills/flutter/SKILL.md` |
 | 画面遷移 | `docs/skills/app-flow/SKILL.md` |
