@@ -13,7 +13,7 @@ Prototype 1 では、記録を保存し、カレンダーから日付ごとに�
 
 - Flutter
 - Dart
-- sqflite
+- Firebase（移行予定。現在のアプリ実装は sqflite）
 - image_picker
 
 ## ディレクトリ構成
@@ -29,9 +29,8 @@ Prototype 1 では、記録を保存し、カレンダーから日付ごとに�
 
 | 内容 | パス |
 |---|---|
-| AI 向け入口 | `AGENTS.md` |
-| docs 配下の索引 | `docs/README.md` |
-| 仕様の正 | `docs/product-requirements.md` |
+| AI 向けルール・docs 配下の索引 | `docs/AGENTS.md` |
+| 仕様の正（共通・画面別要件） | `docs/skills/app-flow/requirements-definition/` |
 | 禁止事項・確認が必要な操作 | `docs/skills/guardrails/SKILL.md` |
 | Widget・状態管理・コメント方針 | `docs/skills/flutter/SKILL.md` |
 | レイヤー分割・依存の向き | `docs/skills/clean-architecture/SKILL.md` |
@@ -47,4 +46,5 @@ Prototype 1 では、記録を保存し、カレンダーから日付ごとに�
 
 ## AI で作業する場合
 
-先に `AGENTS.md` を読む。
+先に `docs/AGENTS.md` を読む。
+ルートに `AGENTS.md` は置かないため、AI エージェントには `docs/AGENTS.md` を明示的に読み込ませる。
