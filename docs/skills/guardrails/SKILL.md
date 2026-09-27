@@ -23,5 +23,5 @@ description: Define which operations require user confirmation and which technic
 - カレンダー実装方法は提案してよい
 - 大きな技術選定は採用理由を Human へ説明してから進める
 - 採用した判断は該当する SKILL.md に理由つきで 1 行追記する
-- ログインは実装しない
+- ログインの対象範囲は `docs/skills/app-flow/requirements-definition/login.md` を正とする
 - AI 予測は実装しない

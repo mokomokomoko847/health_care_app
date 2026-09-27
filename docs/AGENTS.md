@@ -2,18 +2,18 @@
 
 このプロジェクトで作業するAIエージェント共通のルールです。
 各ドキュメントはファイル名ではなくパスで指定しています。記載のパスを直接開いてください。
-パスはすべてリポジトリのルートを基準とします。
+このファイル内のパスはすべてリポジトリのルートを基準とします。各ドキュメント内で相対パスの基準が明記されている場合は、その基準に従ってください。
 
 ## プロジェクト概要
 
 楽ちん報告アプリ（仮）。診察時に医師へ生活状況を説明する手間を減らす健康ログアプリ。
 血糖値・測定タイミング・メモ・食事写真を1件の記録として保存し、カレンダーから日付ごとに見返す。
-現在はPrototype 1（MVP）。ログイン・AI予測は実装しない。
+現在はPrototype 1（MVP）。メールアドレス・パスワードによるログインを実装対象とし、AI予測は実装しない。
 
 ## 技術スタック
 
 - Flutter / Dart
-- ローカルDB: sqflite
+- 認証・データ保存: Firebase（移行予定。現在のアプリ実装は sqflite、ログインは未実装）
 - 写真取得: image_picker
 - 状態管理: setState のみ（Prototype 1）
 
@@ -23,7 +23,7 @@
 
 | 内容 | パス |
 |---|---|
-| 仕様の正（何を作るか） | `docs/product-requirements.md` |
+| 仕様の正（共通・画面別要件） | `docs/skills/app-flow/requirements-definition/` |
 | AI 向けルール・docs 配下の索引 | `docs/AGENTS.md` |
 | レイヤー分割・依存の向き | `docs/skills/clean-architecture/SKILL.md` |
 | Widget・状態管理・コメント方針 | `docs/skills/flutter/SKILL.md` |
@@ -44,7 +44,7 @@
 
 1. 画面・フォーム・一覧・ナビゲーション・スタイルを変更する前に `docs/skills/app-flow/SKILL.md` と `docs/skills/flutter/SKILL.md` を確認する
 2. 新しいクラス・ファイル・ディレクトリを作る前に `docs/skills/clean-architecture/SKILL.md` を確認する
-3. 血糖値・日時・メモ・写真の入力仕様や上限値を変更する前に `docs/product-requirements.md` を確認する
+3. 血糖値・日時・メモ・写真の入力仕様や上限値を変更する前に `docs/skills/app-flow/requirements-definition/record-input.md` を確認する
 4. 画面遷移を追加・変更する前に `docs/skills/app-flow/SKILL.md` を確認し、Mermaid 図も更新する
 5. テストを追加・変更する前に `docs/skills/test/SKILL.md` を確認する
 6. 仕様変更・機能追加・データ削除・有料サービス導入の前に `docs/skills/guardrails/SKILL.md` を確認する
