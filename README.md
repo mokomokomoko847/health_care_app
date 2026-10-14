@@ -35,6 +35,7 @@ Prototype 1 では、記録を保存し、カレンダーから日付ごとに�
 | Widget・状態管理・コメント方針 | `docs/skills/flutter/SKILL.md` |
 | レイヤー分割・依存の向き | `docs/skills/clean-architecture/SKILL.md` |
 | 画面遷移 | `docs/skills/app-flow/SKILL.md` |
+| Google Stitch用の全画面デザイン指示書（要件の受け渡し用） | [docs/design.md](docs/design.md) |
 | テスト方針 | `docs/skills/test/SKILL.md` |
 | 画像 | `docs/images/` |
 
