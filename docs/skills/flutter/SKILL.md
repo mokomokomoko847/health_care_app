@@ -5,7 +5,9 @@ description: Define Flutter implementation rules for widgets, state management, 
 
 - Prototype 1 では状態管理は setState のみを使う
 - 状態管理を setState のみにする理由は Flutter 学習のためにコードを必要以上に複雑にしないため
-- 状態管理の見直し条件は TODO: 要確認
+- 状態管理の見直し条件は：
+- health_care_app では状態管理に setState のみを使用する。
+- 複数画面で同じ状態を共有する必要が生じ、setState だけでは管理が複雑になった場合に状態管理方法を見直す。
 - Widget は build を分割する
 - コードは読みやすくして初心者にも追いやすい構造にする
 - 変数名は分かりやすくする
