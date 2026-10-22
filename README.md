@@ -4,6 +4,17 @@
 血糖値・測定タイミング・メモ・食事写真を1件の記録として保存します。
 Prototype 1 では、記録を保存し、カレンダーから日付ごとに見返します。
 
+## 現在のログイン画面
+
+起動時にFlutter製のログイン画面を表示します。ログイン／新規登録の切り替え、
+入力チェック、パスワードの表示切り替えに対応しています。
+切り替え時はメールアドレスを保持し、パスワードをクリアします。
+添付HTMLのサンプル認証情報は初期入力せず、メールアドレスはプレースホルダーで表示します。
+
+Firebase Authenticationは未接続です。ログイン・登録・再設定メール送信は実行せず、
+未接続の案内を表示します。認証後の画面には進めません。
+既存の記録入力画面とSQLiteデータは保持しています。
+
 ## スクリーンショット
 
 画像の置き場所は `docs/images/` です。
@@ -35,6 +46,7 @@ Prototype 1 では、記録を保存し、カレンダーから日付ごとに�
 | Widget・状態管理・コメント方針 | `docs/skills/flutter/SKILL.md` |
 | レイヤー分割・依存の向き | `docs/skills/clean-architecture/SKILL.md` |
 | 画面遷移 | `docs/skills/app-flow/SKILL.md` |
+| Google Stitch用の全画面デザイン指示書（要件の受け渡し用） | [docs/design.md](docs/design.md) |
 | テスト方針 | `docs/skills/test/SKILL.md` |
 | 画像 | `docs/images/` |
 
