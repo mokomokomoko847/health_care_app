@@ -8,7 +8,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:go_router/go_router.dart';
+
 import 'package:health_care_app/main.dart';
+import 'package:health_care_app/pages/calendar_page.dart';
+import 'package:health_care_app/pages/login_page.dart';
 import 'package:health_care_app/pages/record_input_page.dart';
 
 void main() {
@@ -32,18 +36,41 @@ void main() {
     expect(find.text('記録を保存'), findsOneWidget);
   });
 
-  testWidgets('起動時はログイン画面を表示し、未入力の送信を防ぐ', (tester) async {
+  testWidgets('空欄のログインでカレンダーへ進み、戻る操作では終了確認を表示する', (tester) async {
     await tester.pumpWidget(const RakuchinReportApp());
-    expect(find.text('日々の記録を、診察で伝えやすく。'), findsOneWidget);
-    expect(find.byType(RecordInputPage), findsNothing);
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginPage), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('authSubmit')));
     await tester.pumpAndSettle();
-    expect(find.text('メールアドレスを入力してください'), findsOneWidget);
-    expect(find.text('パスワードを入力してください'), findsOneWidget);
+    expect(find.byType(CalendarPage), findsOneWidget);
+    expect(find.byType(LoginPage), findsNothing);
+    final router = GoRouter.of(tester.element(find.byType(CalendarPage)));
+    expect(router.routeInformationProvider.value.uri.path, '/calendar');
+    expect(router.canPop(), isFalse);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('アプリを終了しますか？'), findsOneWidget);
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CalendarPage), findsOneWidget);
+
+    await tester.tap(find.text('ログアウト'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginPage), findsOneWidget);
+    expect(router.routeInformationProvider.value.uri.path, '/login');
+    expect(router.canPop(), isFalse);
+    expect(find.byType(CalendarPage), findsNothing);
+    for (final field in tester.widgetList<TextFormField>(
+      find.byType(TextFormField),
+    )) {
+      expect(field.controller!.text, isEmpty);
+    }
   });
 
   testWidgets('モード切り替えはメールを保持し、パスワードとエラーを消す', (tester) async {
     await tester.pumpWidget(const RakuchinReportApp());
+    await tester.pumpAndSettle();
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), 'sample@example.com');
     await tester.enterText(fields.at(1), 'password123');
@@ -79,6 +106,7 @@ void main() {
 
   testWidgets('パスワードを表示・非表示に切り替えられる', (tester) async {
     await tester.pumpWidget(const RakuchinReportApp());
+    await tester.pumpAndSettle();
     final field = find.byType(TextField).last;
     expect(tester.widget<TextField>(field).obscureText, isTrue);
     await tester.tap(find.byTooltip('パスワードを表示'));
@@ -89,29 +117,21 @@ void main() {
     expect(tester.widget<TextField>(field).obscureText, isTrue);
   });
 
-  testWidgets('未接続の認証を成功扱いせず、入力を保持する', (tester) async {
+  testWidgets('仮ログインでは入力内容の形式にかかわらず遷移する', (tester) async {
     await tester.pumpWidget(const RakuchinReportApp());
+    await tester.pumpAndSettle();
     final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(0), 'sample@example.com');
-    await tester.enterText(fields.at(1), 'password123');
+    await tester.enterText(fields.at(0), 'mock');
+    await tester.enterText(fields.at(1), '1');
     await tester.tap(find.byKey(const ValueKey('authSubmit')));
     await tester.pumpAndSettle();
-    expect(find.text('Firebase認証が未接続のため、まだログインできません。'), findsOneWidget);
-    expect(find.byType(RecordInputPage), findsNothing);
-    await tester.tap(find.text('閉じる'));
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<TextFormField>(fields.at(0)).controller!.text,
-      'sample@example.com',
-    );
-    expect(
-      tester.widget<TextFormField>(fields.at(1)).controller!.text,
-      'password123',
-    );
+    expect(find.byType(CalendarPage), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
   });
 
   testWidgets('新規登録ではパスワード条件を確認し、未接続の登録を完了扱いしない', (tester) async {
     await tester.pumpWidget(const RakuchinReportApp());
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('registerTab')));
     await tester.pumpAndSettle();
     final fields = find.byType(TextFormField);
@@ -132,6 +152,7 @@ void main() {
 
   testWidgets('パスワード再設定は未接続であることを案内する', (tester) async {
     await tester.pumpWidget(const RakuchinReportApp());
+    await tester.pumpAndSettle();
     final helper = find.text('パスワードを忘れた方');
     await tester.ensureVisible(helper);
     await tester.tap(helper);
