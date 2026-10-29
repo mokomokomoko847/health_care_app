@@ -4,7 +4,9 @@ import '../models/auth_input_validator.dart';
 
 /// 添付デザインをFlutterで再現した認証フォーム。Firebase接続は別途行う。
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, required this.onLogin});
+
+  final VoidCallback onLogin;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -45,6 +47,12 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _submit() {
+    if (!_isRegistering) {
+      // 画面遷移の確認を優先し、仮ログインでは入力・認証を要求しない。
+      FocusScope.of(context).unfocus();
+      widget.onLogin();
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
     _showNotConnectedMessage(
@@ -54,7 +62,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _showNotConnectedMessage(String title, String message) {
-    // 未接続の状態では成功を装わず、記録画面への遷移も行わない。
+    // 登録・再設定はFirebase接続まで未実装であることを案内する。
     return showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(

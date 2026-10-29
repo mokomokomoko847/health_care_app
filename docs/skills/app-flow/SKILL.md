@@ -17,6 +17,9 @@ description: Define screen flow and navigation rules for Prototype 1. Use this b
 
 ## 画面遷移のルール
 
+- 現在の仮実装の範囲は `requirements-definition/login.md` の「現在の開発段階」を正とし、以下の認証要件は Firebase 接続時に適用する。
+- 画面遷移に go_router を採用する理由：ユーザー指定により、公式の Router API に沿って遷移設定を集約し、Firebase 認証の接続を後続で行えるようにする。`lib/app_router.dart` にルートと画面の接続を置き、`MaterialApp.router` で使用する。
+
 - 画面遷移を Mermaid で 1 枚にまとめる
 - 画面を増やすときは `requirements-definition/` に要件定義を置き、上の表と Mermaid 図を更新する。関連画面を既存の要件定義ファイル内で定義する場合も、表に対象画面を明記する
 - 戻る動作の扱いを書く
@@ -45,6 +48,14 @@ description: Define screen flow and navigation rules for Prototype 1. Use this b
 
 ```mermaid
 flowchart TB
+    subgraph MOCK["0. 現在の仮実装（以下のFirebaseフローは後続開発）"]
+        MA["通常起動"] --> ML["ログイン画面"]
+        ML -->|ログインボタン・入力不要・go_router| MC["カレンダー画面"]
+        MC -->|仮ログアウト・履歴置き換え| ML
+        MC -->|端末の戻る操作| MX["アプリ終了確認"]
+        MX -->|キャンセル| MC
+        MX -->|終了| ME["アプリを終了"]
+    end
     subgraph AUTH["1. 起動・認証"]
         A["アプリ起動"] --> S{"認証済み？"}
         S -->|いいえ| L["ログイン画面<br/>新規登録 / ログイン切り替え"]
@@ -135,6 +146,7 @@ flowchart TB
         DELETE -->|失敗・データ保持・日本語エラーダイアログ| F
     end
 
+    MOCK ~~~ AUTH
     AUTH ~~~ NAV
     NAV ~~~ ENTRY
     ENTRY ~~~ DETAIL
