@@ -19,8 +19,8 @@ void main() {
   testWidgets('記録入力画面の主要項目が表示される', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: RecordInputPage()));
 
-    expect(find.text('血糖記録入力'), findsOneWidget);
-    expect(find.text('日時'), findsOneWidget);
+    expect(find.text('記録入力'), findsOneWidget);
+    expect(find.text('測定日時'), findsOneWidget);
     expect(find.text('血糖値'), findsAtLeastNWidgets(1));
     expect(find.text('測定タイミング'), findsOneWidget);
 
@@ -34,6 +34,62 @@ void main() {
     expect(find.text('メモ'), findsOneWidget);
     expect(find.text('食事写真'), findsOneWidget);
     expect(find.text('記録を保存'), findsOneWidget);
+  });
+
+  testWidgets('カレンダーから新規記録入力へ遷移し、空の状態なら戻れる', (tester) async {
+    await tester.pumpWidget(const RakuchinReportApp());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('authSubmit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CalendarPage), findsOneWidget);
+    await tester.ensureVisible(find.text('記録入力'));
+    await tester.tap(find.text('記録入力'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RecordInputPage), findsOneWidget);
+    expect(find.text('例：昼食後に散歩'), findsOneWidget);
+    await tester.tap(find.byTooltip('戻る'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CalendarPage), findsOneWidget);
+  });
+
+  testWidgets('未保存の入力から戻る際にキャンセルまたは破棄を選べる', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: Center(
+              child: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const RecordInputPage(),
+                  ),
+                ),
+                child: const Text('記録入力を開く'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('記録入力を開く'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '123');
+    await tester.tap(find.byTooltip('戻る'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('入力内容が保存されていません。戻りますか？'), findsOneWidget);
+    await tester.tap(find.text('キャンセル'));
+    await tester.pumpAndSettle();
+    expect(find.byType(RecordInputPage), findsOneWidget);
+    expect(find.text('123'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('戻る'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('戻る'));
+    await tester.pumpAndSettle();
+    expect(find.byType(RecordInputPage), findsNothing);
   });
 
   testWidgets('空欄のログインでカレンダーへ進み、戻る操作では終了確認を表示する', (tester) async {

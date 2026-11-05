@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/glucose_record.dart';
 import '../models/glucose_record_validator.dart';
@@ -25,6 +26,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
   List<String> _photoPaths = <String>[];
   List<String> _validationErrors = <String>[];
   GlucoseRecord? _lastSavedRecord;
+  bool _hasUnsavedChanges = false;
 
   @override
   void initState() {
@@ -39,15 +41,50 @@ class _RecordInputPageState extends State<RecordInputPage> {
     super.dispose();
   }
 
+  void _markChanged() {
+    if (_hasUnsavedChanges) return;
+    setState(() => _hasUnsavedChanges = true);
+  }
+
+  Future<void> _handleBack() async {
+    if (!_hasUnsavedChanges) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+
+    final shouldDiscard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('入力内容が保存されていません。戻りますか？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('戻る'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldDiscard != true || !mounted) return;
+    setState(() => _hasUnsavedChanges = false);
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) Navigator.of(context).maybePop();
+  }
+
   Future<void> _pickDateTime() async {
+    final now = DateTime.now();
     final selectedDate = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
       firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      helpText: '日時を選択',
+      lastDate: DateTime(now.year, now.month, now.day),
+      helpText: '測定日を選択',
       cancelText: 'キャンセル',
-      confirmText: 'OK',
+      confirmText: '次へ',
     );
 
     if (selectedDate == null || !mounted) {
@@ -57,23 +94,29 @@ class _RecordInputPageState extends State<RecordInputPage> {
     final selectedTime = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
-      helpText: '時刻を選択',
+      helpText: '測定時刻を選択',
       cancelText: 'キャンセル',
-      confirmText: 'OK',
+      confirmText: '決定',
     );
 
     if (selectedTime == null) {
       return;
     }
 
+    final candidate = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+    if (candidate.isAfter(DateTime.now())) {
+      _showMessage('現在より未来の日時は選択できません。');
+      return;
+    }
     setState(() {
-      _selectedDateTime = DateTime(
-        selectedDate.year,
-        selectedDate.month,
-        selectedDate.day,
-        selectedTime.hour,
-        selectedTime.minute,
-      );
+      _selectedDateTime = candidate;
+      _hasUnsavedChanges = true;
     });
   }
 
@@ -100,6 +143,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
 
     setState(() {
       _photoPaths = <String>[..._photoPaths, pickedPath];
+      _hasUnsavedChanges = true;
     });
   }
 
@@ -108,6 +152,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
       _photoPaths = _photoPaths
           .where((photoPath) => photoPath != path)
           .toList();
+      _hasUnsavedChanges = true;
     });
   }
 
@@ -120,9 +165,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
       photoPaths: _photoPaths,
     );
 
-    setState(() {
-      _validationErrors = validationResult.errors;
-    });
+    setState(() => _validationErrors = validationResult.errors);
 
     if (!validationResult.isValid) {
       _showMessage('入力内容を確認してください。');
@@ -152,183 +195,383 @@ class _RecordInputPageState extends State<RecordInputPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('血糖記録入力')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildIntroCard(),
-          const SizedBox(height: 16),
-          _buildDateTimeSection(),
-          const SizedBox(height: 16),
-          _buildBloodSugarSection(),
-          const SizedBox(height: 16),
-          _buildMealTimingSection(),
-          const SizedBox(height: 16),
-          _buildMemoSection(),
-          const SizedBox(height: 16),
-          _buildPhotoSection(),
-          if (_validationErrors.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _buildErrorSection(),
-          ],
-          const SizedBox(height: 24),
-          FilledButton(onPressed: _saveRecord, child: const Text('記録を保存')),
-          if (_lastSavedRecord != null) ...[
-            const SizedBox(height: 24),
-            _buildSavedRecordCard(_lastSavedRecord!),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIntroCard() {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('この画面では、日時・血糖値・食前食後・メモ・写真を入力して記録内容を確認できます。'),
+    return PopScope(
+      canPop: !_hasUnsavedChanges,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _hasUnsavedChanges) _handleBack();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          title: const Text('記録入力'),
+          titleTextStyle: const TextStyle(
+            color: Color(0xFF111827),
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
+          leading: IconButton(
+            tooltip: '戻る',
+            onPressed: _handleBack,
+            icon: const Icon(Icons.chevron_left),
+          ),
+        ),
+        body: SafeArea(
+          top: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 430),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                children: [
+                  _buildDateTimeSection(),
+                  const SizedBox(height: 24),
+                  _buildBloodSugarSection(),
+                  const SizedBox(height: 24),
+                  _buildMealTimingSection(),
+                  const SizedBox(height: 24),
+                  _buildMemoSection(),
+                  const SizedBox(height: 24),
+                  _buildPhotoSection(),
+                  if (_validationErrors.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    _buildErrorSection(),
+                  ],
+                  const SizedBox(height: 28),
+                  SizedBox(
+                    height: 52,
+                    child: FilledButton(
+                      onPressed: _saveRecord,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF1D4ED8),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('記録を保存'),
+                    ),
+                  ),
+                  if (_lastSavedRecord != null) ...[
+                    const SizedBox(height: 20),
+                    _buildSavedRecordCard(_lastSavedRecord!),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildDateTimeSection() {
-    return _SectionCard(
-      title: '日時',
-      child: ListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text(_formatDateTime(_selectedDateTime)),
-        subtitle: const Text('初期値は現在日時です。'),
-        trailing: const Icon(Icons.calendar_today),
-        onTap: _pickDateTime,
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _FieldLabel(title: '測定日時', requiredField: true),
+        const SizedBox(height: 8),
+        Material(
+          color: const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: _pickDateTime,
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 56,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_today,
+                      color: Color(0xFF4B5563),
+                      size: 21,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _formatDateTime(_selectedDateTime),
+                        style: const TextStyle(
+                          color: Color(0xFF111827),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.expand_more, color: Color(0xFF4B5563)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          '現在より未来の日時は選択できません。',
+          style: TextStyle(color: Color(0xFF4B5563), fontSize: 14),
+        ),
+      ],
     );
   }
 
   Widget _buildBloodSugarSection() {
-    return _SectionCard(
-      title: '血糖値',
-      child: TextField(
-        controller: _bloodSugarController,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(
-          border: OutlineInputBorder(),
-          labelText: '血糖値',
-          suffixText: 'mg/dL',
-          hintText: '0〜600の整数を入力',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: _FieldLabel(title: '血糖値', requiredField: true),
+            ),
+            const Text(
+              '0〜600の整数',
+              style: TextStyle(color: Color(0xFF4B5563), fontSize: 14),
+            ),
+          ],
         ),
-      ),
+        const SizedBox(height: 8),
+        Container(
+          height: 72,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _bloodSugarController,
+                  onChanged: (_) => _markChanged(),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(3),
+                  ],
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 32,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: '未入力',
+                    hintStyle: TextStyle(
+                      color: Color(0xFF4B5563),
+                      fontSize: 16,
+                    ),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const Text(
+                'mg/dL',
+                style: TextStyle(
+                  color: Color(0xFF4B5563),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildMealTimingSection() {
-    return _SectionCard(
-      title: '測定タイミング',
-      child: SegmentedButton<MealTiming>(
-        segments: const [
-          ButtonSegment<MealTiming>(
-            value: MealTiming.beforeMeal,
-            label: Text('食前'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _FieldLabel(title: '測定タイミング', requiredField: true),
+        const SizedBox(height: 8),
+        SegmentedButton<MealTiming>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment<MealTiming>(
+              value: MealTiming.beforeMeal,
+              label: Text('食前'),
+            ),
+            ButtonSegment<MealTiming>(
+              value: MealTiming.afterMeal,
+              label: Text('食後'),
+            ),
+          ],
+          selected: <MealTiming>{_selectedMealTiming!},
+          onSelectionChanged: (selectedValues) {
+            setState(() {
+              _selectedMealTiming = selectedValues.first;
+              _hasUnsavedChanges = true;
+            });
+          },
+          style: ButtonStyle(
+            backgroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+                  ? const Color(0xFF1D4ED8)
+                  : const Color(0xFFF3F4F6),
+            ),
+            foregroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+                  ? Colors.white
+                  : const Color(0xFF111827),
+            ),
+            side: const WidgetStatePropertyAll(BorderSide.none),
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
           ),
-          ButtonSegment<MealTiming>(
-            value: MealTiming.afterMeal,
-            label: Text('食後'),
-          ),
-        ],
-        selected: _selectedMealTiming == null
-            ? <MealTiming>{}
-            : <MealTiming>{_selectedMealTiming!},
-        onSelectionChanged: (selectedValues) {
-          setState(() {
-            _selectedMealTiming = selectedValues.isEmpty
-                ? null
-                : selectedValues.first;
-          });
-        },
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildMemoSection() {
-    return _SectionCard(
-      title: 'メモ',
-      child: TextField(
-        controller: _memoController,
-        maxLength: GlucoseRecordValidator.maxMemoLength,
-        maxLines: 3,
-        decoration: const InputDecoration(
-          border: OutlineInputBorder(),
-          hintText: '補足があれば入力してください',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: _FieldLabel(title: 'メモ', requiredField: false),
+            ),
+            Text(
+              '${_memoController.text.length}/${GlucoseRecordValidator.maxMemoLength}',
+              style: const TextStyle(color: Color(0xFF4B5563), fontSize: 14),
+            ),
+          ],
         ),
-      ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _memoController,
+          onChanged: (_) => setState(() => _hasUnsavedChanges = true),
+          maxLength: GlucoseRecordValidator.maxMemoLength,
+          maxLines: 3,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: const Color(0xFFF3F4F6),
+            hintText: '例：昼食後に散歩',
+            contentPadding: const EdgeInsets.all(14),
+            counterText: '',
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 2),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildPhotoSection() {
-    return _SectionCard(
-      title: '食事写真',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '追加済み: ${_photoPaths.length} / ${GlucoseRecordValidator.maxPhotoCount}枚',
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              OutlinedButton.icon(
-                onPressed: _addPhotoFromCamera,
-                icon: const Icon(Icons.photo_camera),
-                label: const Text('カメラで撮影'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _addPhotoFromGallery,
-                icon: const Icon(Icons.photo_library),
-                label: const Text('写真を選択'),
-              ),
-            ],
-          ),
-          if (_photoPaths.isEmpty) ...[
-            const SizedBox(height: 12),
-            const Text('まだ写真は追加されていません。'),
-          ] else ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: _photoPaths
-                  .map(
-                    (path) => _PhotoPreviewCard(
-                      path: path,
-                      onRemove: () => _removePhoto(path),
-                    ),
-                  )
-                  .toList(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: _FieldLabel(title: '食事写真', requiredField: false),
+            ),
+            Text(
+              '${_photoPaths.length}/${GlucoseRecordValidator.maxPhotoCount}枚',
+              style: const TextStyle(color: Color(0xFF4B5563), fontSize: 14),
             ),
           ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _PhotoActionButton(
+                icon: Icons.photo_camera,
+                label: 'カメラで撮影',
+                onPressed: _addPhotoFromCamera,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _PhotoActionButton(
+                icon: Icons.image_outlined,
+                label: '写真を選択',
+                onPressed: _addPhotoFromGallery,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: List<Widget>.generate(3, (index) {
+            final path = index < _photoPaths.length ? _photoPaths[index] : null;
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: index == 2 ? 0 : 8),
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: path == null
+                      ? _emptyPhotoSlot(index + 1)
+                      : _PhotoPreviewCard(
+                          path: path,
+                          onRemove: () => _removePhoto(path),
+                        ),
+                ),
+              ),
+            );
+          }),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '最大3枚まで登録できます（0枚でも保存可能）',
+          style: TextStyle(color: Color(0xFF4B5563), fontSize: 14),
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyPhotoSlot(int number) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.add, color: Color(0xFF4B5563), size: 24),
+          const SizedBox(height: 2),
+          Text(
+            '$number枚目',
+            style: const TextStyle(color: Color(0xFF4B5563), fontSize: 12),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildErrorSection() {
-    return Card(
-      color: Theme.of(context).colorScheme.errorContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: _validationErrors
-              .map(
-                (error) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(error),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _validationErrors
+            .map(
+              (error) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  error,
+                  style: const TextStyle(color: Color(0xFFB91C1C)),
                 ),
-              )
-              .toList(),
-        ),
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -358,34 +601,54 @@ class _RecordInputPageState extends State<RecordInputPage> {
   }
 
   String _formatDateTime(DateTime dateTime) {
+    const weekdays = <String>['月', '火', '水', '木', '金', '土', '日'];
+    final weekday = weekdays[dateTime.weekday - 1];
     final month = dateTime.month.toString().padLeft(2, '0');
     final day = dateTime.day.toString().padLeft(2, '0');
     final hour = dateTime.hour.toString().padLeft(2, '0');
     final minute = dateTime.minute.toString().padLeft(2, '0');
-    return '${dateTime.year}/$month/$day $hour:$minute';
+    return '${dateTime.year}年$month月$day日（$weekday） $hour:$minute';
   }
 }
 
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.child});
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel({required this.title, required this.requiredField});
 
   final String title;
-  final Widget child;
+  final bool requiredField;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            child,
-          ],
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF111827),
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
         ),
-      ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: requiredField
+                ? const Color(0xFF1D4ED8)
+                : const Color(0xFFDCE3EC),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            requiredField ? '必須' : '任意',
+            style: TextStyle(
+              color: requiredField ? Colors.white : const Color(0xFF4B5563),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -398,31 +661,63 @@ class _PhotoPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 110,
-      child: Column(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.file(
-              File(path),
-              width: 110,
-              height: 110,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 110,
-                  height: 110,
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.broken_image),
-                );
-              },
+          Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => Container(
+              color: const Color(0xFFF3F4F6),
+              alignment: Alignment.center,
+              child: const Icon(Icons.broken_image_outlined),
             ),
           ),
-          const SizedBox(height: 8),
-          TextButton(onPressed: onRemove, child: const Text('削除')),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: IconButton.filledTonal(
+              tooltip: '写真を削除',
+              onPressed: onRemove,
+              icon: const Icon(Icons.close, size: 18),
+              visualDensity: VisualDensity.compact,
+            ),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _PhotoActionButton extends StatelessWidget {
+  const _PhotoActionButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      child: FilledButton.tonalIcon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFFF3F4F6),
+          foregroundColor: const Color(0xFF111827),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
       ),
     );
   }

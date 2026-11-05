@@ -7,12 +7,12 @@ description: Define screen flow and navigation rules for Prototype 1. Use this b
 
 以下はこのファイルを基準とした相対パス。画面ごとの入力・表示要件はリンク先を正とし、このファイルでは画面遷移を定義する。
 
-| 対象 | 要件定義の相対パス |
-|---|---|
-| 共通（目的・技術・対象範囲・完成条件） | [requirements-definition/common.md](requirements-definition/common.md) |
-| ログイン・新規登録・メール確認待ち・パスワード再設定画面 | [requirements-definition/login.md](requirements-definition/login.md) |
-| カレンダー画面 | [requirements-definition/calendar.md](requirements-definition/calendar.md) |
-| 記録入力画面 | [requirements-definition/record-input.md](requirements-definition/record-input.md) |
+| 対象                                                       | 要件定義の相対パス                                                                 |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 共通（目的・技術・対象範囲・完成条件）                     | [requirements-definition/common.md](requirements-definition/common.md)             |
+| ログイン・新規登録・メール確認待ち・パスワード再設定画面   | [requirements-definition/login.md](requirements-definition/login.md)               |
+| カレンダー画面                                             | [requirements-definition/calendar.md](requirements-definition/calendar.md)         |
+| 記録入力画面                                               | [requirements-definition/record-input.md](requirements-definition/record-input.md) |
 | 日付ごとの詳細画面（画面内編集・削除・訂正履歴画面を含む） | [requirements-definition/daily-detail.md](requirements-definition/daily-detail.md) |
 
 ## 画面遷移のルール
@@ -52,6 +52,8 @@ flowchart TB
         MA["通常起動"] --> ML["ログイン画面"]
         ML -->|ログインボタン・入力不要・go_router| MC["カレンダー画面"]
         MC -->|仮ログアウト・履歴置き換え| ML
+        MC -->|今日・過去日を選択| MF["日付ごとの詳細画面<br/>昨日に3件のサンプル記録"]
+        MF -->|戻る| MC
         MC -->|端末の戻る操作| MX["アプリ終了確認"]
         MX -->|キャンセル| MC
         MX -->|終了| ME["アプリを終了"]
