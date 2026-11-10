@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../models/auth_input_validator.dart';
+import '../services/auth_service.dart';
 
-/// 添付デザインをFlutterで再現した認証フォーム。Firebase接続は別途行う。
+/// メール・パスワード認証の入力と処理状況を表示する。
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key, required this.onLogin});
+  const LoginPage({
+    super.key,
+    required this.auth,
+    required this.onPasswordReset,
+  });
 
-  final VoidCallback onLogin;
+  final AuthService auth;
+  final ValueChanged<String> onPasswordReset;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -23,6 +29,8 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isRegistering = false;
+  bool _isSubmitting = false;
+  String? _error;
   bool _obscurePassword = true;
 
   @override
@@ -33,49 +41,45 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _switchMode(bool isRegistering) {
-    if (_isRegistering == isRegistering) return;
+    if (_isSubmitting || _isRegistering == isRegistering) return;
     FocusScope.of(context).unfocus();
     final email = _emailController.text;
     _formKey.currentState?.reset();
     _emailController.text = email;
     setState(() {
       _isRegistering = isRegistering;
+      _error = null;
       // メールアドレスは保持し、モード切り替え時にはパスワードを消す。
       _passwordController.clear();
       _obscurePassword = true;
     });
   }
 
-  void _submit() {
-    if (!_isRegistering) {
-      // 画面遷移の確認を優先し、仮ログインでは入力・認証を要求しない。
-      FocusScope.of(context).unfocus();
-      widget.onLogin();
-      return;
-    }
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _submit() async {
+    if (_isSubmitting || !_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
-    _showNotConnectedMessage(
-      _isRegistering ? '新規登録' : 'ログイン',
-      'Firebase認証が未接続のため、まだ${_isRegistering ? '登録' : 'ログイン'}できません。',
-    );
-  }
-
-  Future<void> _showNotConnectedMessage(String title, String message) {
-    // 登録・再設定はFirebase接続まで未実装であることを案内する。
-    return showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('閉じる'),
-          ),
-        ],
-      ),
-    );
+    setState(() {
+      _isSubmitting = true;
+      _error = null;
+    });
+    try {
+      if (_isRegistering) {
+        await widget.auth.register(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+      } else {
+        await widget.auth.signIn(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+      }
+      // 遷移はルーターがFirebaseの認証・メール確認状態を見て決める。
+    } catch (error) {
+      if (mounted) setState(() => _error = authErrorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -193,7 +197,7 @@ class _LoginPageState extends State<LoginPage> {
         selected: selected,
         child: TextButton(
           key: ValueKey(isRegistering ? 'registerTab' : 'loginTab'),
-          onPressed: () => _switchMode(isRegistering),
+          onPressed: _isSubmitting ? null : () => _switchMode(isRegistering),
           style: TextButton.styleFrom(
             minimumSize: const Size(0, 44),
             backgroundColor: selected ? _primaryContainer : Colors.transparent,
@@ -225,6 +229,7 @@ class _LoginPageState extends State<LoginPage> {
               label: 'メールアドレス',
               child: TextFormField(
                 controller: _emailController,
+                enabled: !_isSubmitting,
                 decoration: _inputDecoration('sample@example.com'),
                 keyboardType: TextInputType.emailAddress,
                 textInputAction: TextInputAction.next,
@@ -241,6 +246,7 @@ class _LoginPageState extends State<LoginPage> {
               label: 'パスワード',
               child: TextFormField(
                 controller: _passwordController,
+                enabled: !_isSubmitting,
                 decoration: _inputDecoration('••••••••').copyWith(
                   suffixIcon: IconButton(
                     tooltip: _obscurePassword ? 'パスワードを表示' : 'パスワードを隠す',
@@ -292,10 +298,18 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
             ],
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                _error!,
+                semanticsLabel: _error,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ],
             const SizedBox(height: 32),
             FilledButton(
               key: const ValueKey('authSubmit'),
-              onPressed: _submit,
+              onPressed: _isSubmitting ? null : _submit,
               style: FilledButton.styleFrom(
                 backgroundColor: _primaryContainer,
                 foregroundColor: Colors.white,
@@ -308,7 +322,13 @@ class _LoginPageState extends State<LoginPage> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              child: Text(_isRegistering ? '新規登録' : 'ログイン'),
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(_isRegistering ? '新規登録' : 'ログイン'),
             ),
             const SizedBox(height: 16),
             if (_isRegistering)
@@ -327,10 +347,11 @@ class _LoginPageState extends State<LoginPage> {
             else
               Center(
                 child: TextButton(
-                  onPressed: () => _showNotConnectedMessage(
-                    'パスワードの再設定',
-                    'Firebase認証が未接続のため、まだ再設定メールを送信できません。',
-                  ),
+                  onPressed: _isSubmitting
+                      ? null
+                      : () => widget.onPasswordReset(
+                          _emailController.text.trim(),
+                        ),
                   style: TextButton.styleFrom(
                     foregroundColor: _primary,
                     minimumSize: const Size(48, 56),

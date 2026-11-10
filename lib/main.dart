@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'app_router.dart';
 import 'firebase_options.dart';
+import 'services/auth_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,7 +14,9 @@ Future<void> main() async {
 }
 
 class RakuchinReportApp extends StatefulWidget {
-  const RakuchinReportApp({super.key});
+  const RakuchinReportApp({super.key, this.auth});
+
+  final AuthService? auth;
 
   @override
   State<RakuchinReportApp> createState() => _RakuchinReportAppState();
@@ -21,11 +24,13 @@ class RakuchinReportApp extends StatefulWidget {
 
 class _RakuchinReportAppState extends State<RakuchinReportApp> {
   // 再描画のたびにルーターを作り直さず、アプリの生存期間中保持する。
-  late final _router = createAppRouter();
+  late final _auth = widget.auth ?? FirebaseAuthService();
+  late final _router = createAppRouter(auth: _auth);
 
   @override
   void dispose() {
     _router.dispose();
+    if (widget.auth == null) _auth.dispose();
     super.dispose();
   }
 

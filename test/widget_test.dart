@@ -6,6 +6,7 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:flutter/material.dart';
+import 'support/fake_auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:go_router/go_router.dart';
@@ -37,8 +38,13 @@ void main() {
   });
 
   testWidgets('カレンダーから新規記録入力へ遷移し、空の状態なら戻れる', (tester) async {
-    await tester.pumpWidget(const RakuchinReportApp());
+    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
     await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'sample@example.com',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'password123');
     await tester.tap(find.byKey(const ValueKey('authSubmit')));
     await tester.pumpAndSettle();
 
@@ -92,10 +98,15 @@ void main() {
     expect(find.byType(RecordInputPage), findsNothing);
   });
 
-  testWidgets('空欄のログインでカレンダーへ進み、戻る操作では終了確認を表示する', (tester) async {
-    await tester.pumpWidget(const RakuchinReportApp());
+  testWidgets('ログイン成功でカレンダーへ進み、戻る操作では終了確認を表示する', (tester) async {
+    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
     await tester.pumpAndSettle();
     expect(find.byType(LoginPage), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'sample@example.com',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'password123');
     await tester.tap(find.byKey(const ValueKey('authSubmit')));
     await tester.pumpAndSettle();
     expect(find.byType(CalendarPage), findsOneWidget);
@@ -125,7 +136,7 @@ void main() {
   });
 
   testWidgets('モード切り替えはメールを保持し、パスワードとエラーを消す', (tester) async {
-    await tester.pumpWidget(const RakuchinReportApp());
+    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
     await tester.pumpAndSettle();
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), 'sample@example.com');
@@ -161,7 +172,7 @@ void main() {
   });
 
   testWidgets('パスワードを表示・非表示に切り替えられる', (tester) async {
-    await tester.pumpWidget(const RakuchinReportApp());
+    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
     await tester.pumpAndSettle();
     final field = find.byType(TextField).last;
     expect(tester.widget<TextField>(field).obscureText, isTrue);
@@ -173,20 +184,21 @@ void main() {
     expect(tester.widget<TextField>(field).obscureText, isTrue);
   });
 
-  testWidgets('仮ログインでは入力内容の形式にかかわらず遷移する', (tester) async {
-    await tester.pumpWidget(const RakuchinReportApp());
+  testWidgets('ログインで不正な形式を拒否する', (tester) async {
+    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
     await tester.pumpAndSettle();
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), 'mock');
     await tester.enterText(fields.at(1), '1');
     await tester.tap(find.byKey(const ValueKey('authSubmit')));
     await tester.pumpAndSettle();
-    expect(find.byType(CalendarPage), findsOneWidget);
+    expect(find.byType(CalendarPage), findsNothing);
+    expect(find.text('メールアドレスの形式を確認してください'), findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
   });
 
-  testWidgets('新規登録ではパスワード条件を確認し、未接続の登録を完了扱いしない', (tester) async {
-    await tester.pumpWidget(const RakuchinReportApp());
+  testWidgets('新規登録ではパスワード条件を確認し、確認待ちへ進む', (tester) async {
+    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('registerTab')));
     await tester.pumpAndSettle();
@@ -202,18 +214,19 @@ void main() {
     await tester.ensureVisible(submit);
     await tester.tap(submit);
     await tester.pumpAndSettle();
-    expect(find.text('Firebase認証が未接続のため、まだ登録できません。'), findsOneWidget);
+    expect(find.text('確認が完了しました'), findsOneWidget);
+    expect(find.byType(CalendarPage), findsNothing);
     expect(find.byType(RecordInputPage), findsNothing);
   });
 
-  testWidgets('パスワード再設定は未接続であることを案内する', (tester) async {
-    await tester.pumpWidget(const RakuchinReportApp());
+  testWidgets('パスワード再設定のメール入力画面を開く', (tester) async {
+    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
     await tester.pumpAndSettle();
     final helper = find.text('パスワードを忘れた方');
     await tester.ensureVisible(helper);
     await tester.tap(helper);
     await tester.pumpAndSettle();
-    expect(find.text('Firebase認証が未接続のため、まだ再設定メールを送信できません。'), findsOneWidget);
+    expect(find.text('再設定メールを送信'), findsOneWidget);
   });
 
   testWidgets('小さい画面と文字拡大でもスクロールして操作できる', (tester) async {
@@ -229,7 +242,7 @@ void main() {
           ).copyWith(textScaler: const TextScaler.linear(1.5)),
           child: child!,
         ),
-        home: const RakuchinReportApp(),
+        home: RakuchinReportApp(auth: FakeAuthService()),
       ),
     );
     await tester.tap(find.byKey(const ValueKey('registerTab')));

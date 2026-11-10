@@ -17,7 +17,7 @@ description: Define screen flow and navigation rules for Prototype 1. Use this b
 
 ## 画面遷移のルール
 
-- 現在の仮実装の範囲は `requirements-definition/login.md` の「現在の開発段階」を正とし、以下の認証要件は Firebase 接続時に適用する。
+- 現在の実装範囲は `requirements-definition/login.md` の「現在の開発段階」を正とする。Firebase認証フローを接続済みで、記録の保存・取得のFirebase移行は別工程とする。
 - 画面遷移に go_router を採用する理由：ユーザー指定により、公式の Router API に沿って遷移設定を集約し、Firebase 認証の接続を後続で行えるようにする。`lib/app_router.dart` にルートと画面の接続を置き、`MaterialApp.router` で使用する。
 
 - 画面遷移を Mermaid で 1 枚にまとめる
@@ -48,7 +48,7 @@ description: Define screen flow and navigation rules for Prototype 1. Use this b
 
 ```mermaid
 flowchart TB
-    subgraph MOCK["0. 現在の仮実装（以下のFirebaseフローは後続開発）"]
+    subgraph MOCK["0. 接続前の仮実装（履歴・現在はAUTHを使用）"]
         MA["通常起動"] --> ML["ログイン画面"]
         ML -->|ログインボタン・入力不要・go_router| MC["カレンダー画面"]
         MC -->|仮ログアウト・履歴置き換え| ML
@@ -84,7 +84,8 @@ flowchart TB
         SEND -->|失敗・エラー表示| RM
         RM -->|通常の戻る操作| L
         SENT -->|手動で戻る| L
-        SENT -->|メール内のリンクを開く| RESET["アプリ内のパスワード再設定画面"]
+        SENT -->|メール内のリンクを開く| BRIDGE["Hosting中継ページ<br/>公開・メールテンプレート設定が必要"]
+        BRIDGE -->|アプリを開く・modeとoobCodeを渡す| RESET["アプリ内のパスワード再設定画面"]
         RESET -->|コード検証・条件を満たすパスワードを設定| RESETCHECK{"Firebase で再設定"}
         RESETCHECK -->|成功| RESETDONE["完了を表示"]
         RESETCHECK -->|失敗・エラー表示| RESET
