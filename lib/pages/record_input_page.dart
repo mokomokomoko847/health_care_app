@@ -6,11 +6,19 @@ import 'package:flutter/services.dart';
 import '../models/glucose_record.dart';
 import '../models/glucose_record_validator.dart';
 import '../services/photo_picker_service.dart';
+import '../repositories/glucose_record_repository.dart';
 
 class RecordInputPage extends StatefulWidget {
-  const RecordInputPage({super.key, this.photoPickerService});
+  const RecordInputPage({
+    super.key,
+    this.photoPickerService,
+    this.repository,
+    this.userId,
+  });
 
   final PhotoPickerService? photoPickerService;
+  final GlucoseRecordRepository? repository;
+  final String? userId;
 
   @override
   State<RecordInputPage> createState() => _RecordInputPageState();
@@ -25,7 +33,8 @@ class _RecordInputPageState extends State<RecordInputPage> {
   MealTiming? _selectedMealTiming = MealTiming.beforeMeal;
   List<String> _photoPaths = <String>[];
   List<String> _validationErrors = <String>[];
-  GlucoseRecord? _lastSavedRecord;
+  String? _recordId;
+  bool _saving = false;
   bool _hasUnsavedChanges = false;
 
   @override
@@ -47,6 +56,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
   }
 
   Future<void> _handleBack() async {
+    if (_saving) return;
     if (!_hasUnsavedChanges) {
       Navigator.of(context).maybePop();
       return;
@@ -156,7 +166,8 @@ class _RecordInputPageState extends State<RecordInputPage> {
     });
   }
 
-  void _saveRecord() {
+  Future<void> _saveRecord() async {
+    if (_saving) return;
     final validationResult = GlucoseRecordValidator.validate(
       recordedAt: _selectedDateTime,
       bloodSugarText: _bloodSugarController.text,
@@ -180,11 +191,44 @@ class _RecordInputPageState extends State<RecordInputPage> {
       photoPaths: _photoPaths,
     );
 
-    setState(() {
-      _lastSavedRecord = record;
-    });
-
-    _showMessage('記録内容を保存準備できました。');
+    final repository = widget.repository;
+    final userId = widget.userId;
+    if (repository == null || userId == null) {
+      _showMessage('保存先が設定されていません。ログインし直してください。');
+      return;
+    }
+    if (_photoPaths.isNotEmpty) {
+      _showMessage('写真のクラウド保存は準備中です。写真を外して保存してください。');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      _recordId ??= repository.newRecordId();
+      await repository.create(userId, _recordId!, record);
+      if (!mounted) return;
+      setState(() {
+        _hasUnsavedChanges = false;
+        _saving = false;
+      });
+      await WidgetsBinding.instance.endOfFrame;
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('保存できませんでした'),
+          content: Text(recordErrorMessage(error)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('閉じる'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   void _showMessage(String message) {
@@ -196,7 +240,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_hasUnsavedChanges,
+      canPop: !_saving && !_hasUnsavedChanges,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop && _hasUnsavedChanges) _handleBack();
       },
@@ -213,7 +257,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
           ),
           leading: IconButton(
             tooltip: '戻る',
-            onPressed: _handleBack,
+            onPressed: _saving ? null : _handleBack,
             icon: const Icon(Icons.chevron_left),
           ),
         ),
@@ -222,42 +266,41 @@ class _RecordInputPageState extends State<RecordInputPage> {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 430),
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                children: [
-                  _buildDateTimeSection(),
-                  const SizedBox(height: 24),
-                  _buildBloodSugarSection(),
-                  const SizedBox(height: 24),
-                  _buildMealTimingSection(),
-                  const SizedBox(height: 24),
-                  _buildMemoSection(),
-                  const SizedBox(height: 24),
-                  _buildPhotoSection(),
-                  if (_validationErrors.isNotEmpty) ...[
-                    const SizedBox(height: 20),
-                    _buildErrorSection(),
-                  ],
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    height: 52,
-                    child: FilledButton(
-                      onPressed: _saveRecord,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF1D4ED8),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+              child: AbsorbPointer(
+                absorbing: _saving,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                  children: [
+                    _buildDateTimeSection(),
+                    const SizedBox(height: 24),
+                    _buildBloodSugarSection(),
+                    const SizedBox(height: 24),
+                    _buildMealTimingSection(),
+                    const SizedBox(height: 24),
+                    _buildMemoSection(),
+                    const SizedBox(height: 24),
+                    _buildPhotoSection(),
+                    if (_validationErrors.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _buildErrorSection(),
+                    ],
+                    const SizedBox(height: 28),
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: _saving ? null : _saveRecord,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF1D4ED8),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
+                        child: Text(_saving ? '保存中…' : '記録を保存'),
                       ),
-                      child: const Text('記録を保存'),
                     ),
-                  ),
-                  if (_lastSavedRecord != null) ...[
-                    const SizedBox(height: 20),
-                    _buildSavedRecordCard(_lastSavedRecord!),
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -490,7 +533,9 @@ class _RecordInputPageState extends State<RecordInputPage> {
               child: _PhotoActionButton(
                 icon: Icons.photo_camera,
                 label: 'カメラで撮影',
-                onPressed: _addPhotoFromCamera,
+                onPressed: widget.repository == null
+                    ? _addPhotoFromCamera
+                    : null,
               ),
             ),
             const SizedBox(width: 8),
@@ -498,7 +543,9 @@ class _RecordInputPageState extends State<RecordInputPage> {
               child: _PhotoActionButton(
                 icon: Icons.image_outlined,
                 label: '写真を選択',
-                onPressed: _addPhotoFromGallery,
+                onPressed: widget.repository == null
+                    ? _addPhotoFromGallery
+                    : null,
               ),
             ),
           ],
@@ -524,9 +571,11 @@ class _RecordInputPageState extends State<RecordInputPage> {
           }),
         ),
         const SizedBox(height: 8),
-        const Text(
-          '最大3枚まで登録できます（0枚でも保存可能）',
-          style: TextStyle(color: Color(0xFF4B5563), fontSize: 14),
+        Text(
+          widget.repository == null
+              ? '最大3枚まで登録できます（0枚でも保存可能）'
+              : '写真付きの保存は準備中です。現在は写真なしで保存できます。',
+          style: const TextStyle(color: Color(0xFF4B5563), fontSize: 14),
         ),
       ],
     );
@@ -572,30 +621,6 @@ class _RecordInputPageState extends State<RecordInputPage> {
               ),
             )
             .toList(),
-      ),
-    );
-  }
-
-  // 保存ボタンで組み立てられた記録を画面に出し、入力結果を確認しやすくする。
-  Widget _buildSavedRecordCard(GlucoseRecord record) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '保存内容の確認',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Text('日時: ${_formatDateTime(record.recordedAt)}'),
-            Text('血糖値: ${record.bloodSugarMgDl} mg/dL'),
-            Text('測定タイミング: ${record.mealTiming.label}'),
-            Text('メモ: ${record.memo.isEmpty ? '未入力' : record.memo}'),
-            Text('写真枚数: ${record.photoPaths.length}枚'),
-          ],
-        ),
       ),
     );
   }
@@ -700,7 +725,7 @@ class _PhotoActionButton extends StatelessWidget {
 
   final IconData icon;
   final String label;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

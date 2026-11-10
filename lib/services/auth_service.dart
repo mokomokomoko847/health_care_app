@@ -8,6 +8,7 @@ abstract class AuthService extends ChangeNotifier {
   bool get isReady;
   bool get isSignedIn;
   bool get isEmailVerified;
+  String? get userId;
   String? get email;
   String? get verificationError;
   String? get initializationError;
@@ -57,6 +58,8 @@ class FirebaseAuthService extends AuthService {
   bool get isSignedIn => _auth.currentUser != null;
   @override
   bool get isEmailVerified => _emailVerified;
+  @override
+  String? get userId => _auth.currentUser?.uid;
   @override
   String? get email => _auth.currentUser?.email;
   @override

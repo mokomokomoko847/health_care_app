@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'pages/calendar_page.dart';
-import 'pages/daily_detail_page.dart';
+import 'pages/user_records_page.dart';
+import 'repositories/glucose_record_repository.dart';
 import 'pages/login_page.dart';
 import 'pages/record_input_page.dart';
-import 'models/mock_daily_records.dart';
 import 'services/auth_service.dart';
 import 'pages/email_verification_page.dart';
 import 'pages/password_reset_page.dart';
 
 /// 認証状態の変更時に保護対象のルートを再評価する。
-GoRouter createAppRouter({required AuthService auth}) {
-  final today = DateTime.now();
-  final normalizedToday = DateTime(today.year, today.month, today.day);
-  final mockRecordDate = MockDailyRecords.sampleDate(normalizedToday);
+GoRouter createAppRouter({
+  required AuthService auth,
+  GlucoseRecordRepository? repository,
+}) {
+  final records = repository ?? FirestoreGlucoseRecordRepository();
 
   return GoRouter(
     initialLocation: '/login',
@@ -24,7 +24,7 @@ GoRouter createAppRouter({required AuthService auth}) {
       // メールのコードはセッションの有無に関係なくFirebaseで検証する。
       if (path == '/auth-action') return null;
       if (!auth.isReady) return path == '/loading' ? null : '/loading';
-      if (!auth.isSignedIn) {
+      if (!auth.isSignedIn || auth.userId == null) {
         return path == '/login' || path == '/password-reset' ? null : '/login';
       }
       if (!auth.isEmailVerified) {
@@ -94,11 +94,14 @@ GoRouter createAppRouter({required AuthService auth}) {
       ),
       GoRoute(
         path: '/calendar',
-        builder: (context, state) => CalendarPage(
-          today: normalizedToday,
-          recordedDates: {mockRecordDate},
+        builder: (context, state) => UserCalendarPage(
+          key: ValueKey(auth.userId),
+          userId: auth.userId!,
+          repository: records,
           onDateSelected: (date) => context.push('/daily-detail', extra: date),
-          onCreateRecord: () => context.push('/record-input'),
+          onCreateRecord: () async {
+            await context.push('/record-input');
+          },
           onLogout: () async {
             try {
               await auth.signOut();
@@ -114,16 +117,22 @@ GoRouter createAppRouter({required AuthService auth}) {
       GoRoute(
         path: '/daily-detail',
         builder: (context, state) {
-          final selectedDate = state.extra as DateTime? ?? mockRecordDate;
-          return DailyDetailPage(
+          final selectedDate = state.extra as DateTime? ?? DateTime.now();
+          return UserDailyDetailPage(
+            key: ValueKey('${auth.userId}:$selectedDate'),
+            userId: auth.userId!,
             date: selectedDate,
-            records: MockDailyRecords.forDate(selectedDate, normalizedToday),
+            repository: records,
           );
         },
       ),
       GoRoute(
         path: '/record-input',
-        builder: (context, state) => const RecordInputPage(),
+        builder: (context, state) => RecordInputPage(
+          key: ValueKey(auth.userId),
+          repository: records,
+          userId: auth.userId!,
+        ),
       ),
     ],
   );

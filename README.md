@@ -16,7 +16,7 @@ Firebase Authenticationへ接続しました。認証状態の復元中は読み
 - 確認待ち: `lib/pages/email_verification_page.dart`
 - 再設定メール送信・コード検証・新しいパスワードの設定: `lib/pages/password_reset_page.dart`
 - 認証ガード: `lib/app_router.dart`。画面側の成功コールバックではなく認証状態で遷移します。
-- 認証済み画面の記録は既存のサンプル表示／SQLite保存のままです。Firestoreへの移行・ユーザー別の記録保存は未実装です。
+- 認証接続時点では記録はサンプル表示／SQLite保存のままでした。現在のFirestore対応は下記「ユーザー別のFirestore記録」を参照してください。
 
 ### メールリンクの追加設定（アプリ内での再設定に必要）
 
@@ -51,6 +51,55 @@ fvm flutter run
 再起動時のセッション復元、ログアウト、誤ったパスワード、通信失敗を確認してください。
 HostingとConsole設定後は再設定メールからアプリ内でパスワードを変更し、新しいパスワードでログインしてください。
 ユニット／WidgetテストではFirebase通信を差し替えており、本番でのメール到着や実機のリンク起動は別途確認が必要です。
+
+## ユーザー別のFirestore記録
+
+確認済みユーザーのUIDを使用し、`users/{uid}/glucose_records/{recordId}` に
+測定日時（Timestamp）・血糖値・食前／食後・メモ・写真参照（現在は空）・作成／更新日時を保存します。
+新規保存、月別の記録日表示、日別詳細の日時昇順表示をFirestoreへ接続しました。
+サンプル記録は通常起動で表示しません。既存SQLiteデータの自動移行・削除は行いません。
+
+- 保存・取得の窓口: `lib/repositories/glucose_record_repository.dart`
+- 取得状態と再試行: `lib/pages/user_records_page.dart`。月別取得は表示月の範囲に絞ります。
+- 保存完了後はカレンダーへ戻り再取得します。失敗時は入力を保持し、日本語のダイアログを表示します。
+- 同じ入力画面の再試行では同じ記録IDを使います。登録済みなら内容を照合し、上書きせず重複作成を防ぎます。
+- オフラインで保留書き込みを残さないため、登録には[Firestoreトランザクション](https://firebase.google.com/docs/firestore/manage-data/transactions)を使用します。取得はサーバーのみを指定します。
+- ユーザー切替時は画面の取得結果を破棄します。月切替では遅れて届く古い結果を反映しません。
+- `firestore.rules` でメール確認済み本人の作成・取得のみ許可し、必須項目・型・範囲・未来日時を検証します。
+
+### 今回の対象外と本番設定
+
+写真のクラウド保存はCloud Storageの課金設定を確認する別工程です。
+通常起動では写真追加を無効にし、写真なしで保存できることを案内します。
+編集・削除・訂正履歴も別工程で、現在のFirestoreルールは更新・削除を拒否します。
+これらとApp Checkの実機確認・強制適用を含むMVP全体の完成条件は、まだ満たしていません。
+
+既存のFirebaseプロジェクトにはFirestoreデータベースが存在します。
+本番Security Rulesの反映と実機確認は別途必要です。以下のコマンドは本番のルールを置き換えるため、
+内容を確認してから実行してください。この変更では本番へのデプロイは実行していません。
+
+```sh
+firebase deploy --only firestore:rules --project healthcare-da878
+```
+
+実機では「確認済みアカウントでログイン → 記録入力 → 血糖値とメモを入力して保存 →
+カレンダーの記録日を選択 → 詳細表示 → 再起動後も表示」を確認してください。
+別アカウントでログインした場合に前のアカウントの記録が表示されないこと、
+機内モードで保存した場合に入力を保持してエラーとなり、再接続だけでは自動保存されないことも確認してください。
+
+### ローカル検証
+
+```sh
+fvm flutter test
+fvm flutter analyze
+npm --prefix test/firestore ci
+firebase emulators:exec --only firestore --project demo-health-care 'node --test test/firestore/firestore.rules.test.mjs'
+```
+
+Flutterテストでは保存・取得・日付境界・再試行・画面更新・アカウント切替を検証します。
+ルールテストは本番に接続しないデモプロジェクトで実行し、本人の登録・取得と、
+未認証／未確認／別ユーザー・不正データ・未実装の操作の拒否を検証します。
+App Checkの強制適用はエミュレーターのルールテストで検証できないため、公開前に実機で確認してください。
 
 ## Firebase接続前の実装履歴
 
