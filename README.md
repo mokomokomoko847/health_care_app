@@ -11,9 +11,28 @@ Prototype 1 では、記録を保存し、カレンダーから日付ごとに�
 切り替え時はメールアドレスを保持し、パスワードをクリアします。
 添付HTMLのサンプル認証情報は初期入力せず、メールアドレスはプレースホルダーで表示します。
 
-Firebase Authenticationは未接続です。ログイン・登録・再設定メール送信は実行せず、
-未接続の案内を表示します。認証後の画面には進めません。
+Firebase Authenticationへの接続処理は未実装です。現在のログインは入力内容にかかわらず
+カレンダーへ進むモックです。新規登録・再設定メール送信は実行せず、未接続の案内を表示します。
 既存の記録入力画面とSQLiteデータは保持しています。
+
+## Firebase の導入状況（Android / iOS）
+
+Firebase プロジェクト `healthcare-da878` に接続するための設定を導入しています。
+
+- Android: `android/app/google-services.json`（`com.example.health_care_app`）
+- iOS: `ios/Runner/GoogleService-Info.plist`（`com.example.healthCareApp`）。Runner のリソースに登録済みです。
+- Flutter: `lib/firebase_options.dart` を使用し、`lib/main.dart` で Firebase の初期化完了後にアプリを起動します。
+- パッケージ: `firebase_core` と `firebase_auth`。認証処理は次工程で接続します。
+- Android の通信権限はリリースビルドでも使用できるように設定しています。
+
+```sh
+fvm flutter pub get
+fvm flutter run
+```
+
+今回の設定対象は Android / iOS です。Web・macOS・Windows・Linux の Firebase 設定は含みません。
+次工程では Firebase Console の Authentication でメール／パスワード認証の有効化を確認し、
+ログイン・新規登録・パスワード再設定・ログアウトと認証状態による画面遷移を実装します。
 
 ## カレンダー画面のプレビュー
 
@@ -43,7 +62,7 @@ flutter run -t lib/main_calendar_preview.dart
 
 - Flutter
 - Dart
-- Firebase（移行予定。現在のアプリ実装は sqflite）
+- Firebase（Core / Auth パッケージ導入済み。認証処理は未実装、記録保存は sqflite）
 - image_picker
 
 ## ディレクトリ構成
