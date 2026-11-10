@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../models/mock_daily_records.dart';
+import '../models/glucose_record.dart';
 
 class DailyDetailPage extends StatelessWidget {
   const DailyDetailPage({required this.date, required this.records, super.key});
 
   final DateTime date;
-  final List<MockDailyRecord> records;
+  final List<GlucoseRecord> records;
 
   static const _ink = Color(0xFF141B2B);
   static const _primary = Color(0xFF0037B0);
@@ -164,8 +164,7 @@ class DailyDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _buildRecordCard(BuildContext context, MockDailyRecord item) {
-    final record = item.record;
+  Widget _buildRecordCard(BuildContext context, GlucoseRecord record) {
     final time =
         '${record.recordedAt.hour.toString().padLeft(2, '0')}:'
         '${record.recordedAt.minute.toString().padLeft(2, '0')}';
@@ -216,10 +215,6 @@ class DailyDetailPage extends StatelessWidget {
               ),
             ],
           ),
-          if (item.hasCorrectionHistory) ...[
-            const SizedBox(height: 12),
-            _buildCorrectionNotice(context),
-          ],
           const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -309,43 +304,6 @@ class DailyDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _buildCorrectionNotice(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE9EDFF),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.history, color: _primary, size: 18),
-          const SizedBox(width: 6),
-          const Expanded(
-            child: Text(
-              '訂正あり',
-              style: TextStyle(
-                color: _primary,
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: () => _showCorrectionHistory(context),
-            style: TextButton.styleFrom(
-              foregroundColor: _primary,
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(44, 36),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text('訂正履歴を見る'),
-          ),
-          const Icon(Icons.chevron_right, color: _primary, size: 18),
-        ],
-      ),
-    );
-  }
-
   Widget _buildPhotoGallery(List<String> photoPaths) {
     if (photoPaths.length == 1) {
       return Align(
@@ -425,25 +383,9 @@ class DailyDetailPage extends StatelessWidget {
     );
   }
 
-  void _showCorrectionHistory(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('訂正履歴'),
-        content: const Text('血糖値: 138 mg/dL → 142 mg/dL\n測定日時: 12:20 → 12:30'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('閉じる'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showMockActionNotice(BuildContext context, String action) {
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('モック表示のため、記録の$actionはまだできません。')));
+    ).showSnackBar(SnackBar(content: Text('記録の$actionは今後対応予定です。')));
   }
 }

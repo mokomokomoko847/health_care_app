@@ -15,8 +15,16 @@ class CalendarPage extends StatefulWidget {
     this.onDateSelected,
     this.onCreateRecord,
     this.onLogout,
+    this.onMonthChanged,
+    this.isLoading = false,
+    this.loadError,
+    this.onRetry,
   });
 
+  final ValueChanged<DateTime>? onMonthChanged;
+  final bool isLoading;
+  final String? loadError;
+  final VoidCallback? onRetry;
   final DateTime? today;
   final Set<DateTime> recordedDates;
   final ValueChanged<DateTime>? onDateSelected;
@@ -63,6 +71,7 @@ class _CalendarPageState extends State<CalendarPage>
 
   void _changeMonth(int offset) {
     setState(() => _month = _month.shift(offset));
+    widget.onMonthChanged?.call(_month.firstDay);
   }
 
   Future<void> _showUnavailable(String title, String message) {
@@ -141,6 +150,18 @@ class _CalendarPageState extends State<CalendarPage>
                     children: [
                       _buildMonthNavigation(),
                       const SizedBox(height: 12),
+                      if (widget.isLoading)
+                        const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                      if (widget.loadError != null) ...[
+                        Text(widget.loadError!),
+                        TextButton(
+                          onPressed: widget.onRetry,
+                          child: const Text('再試行'),
+                        ),
+                      ],
                       _buildCalendar(recordedDates),
                       const SizedBox(height: 16),
                       _buildLegend(),

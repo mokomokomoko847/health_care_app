@@ -1,3 +1,5 @@
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:health_care_app/repositories/glucose_record_repository.dart';
 // This is a basic Flutter widget test.
 //
 // To perform an interaction with a widget in your test, use the WidgetTester
@@ -38,7 +40,14 @@ void main() {
   });
 
   testWidgets('カレンダーから新規記録入力へ遷移し、空の状態なら戻れる', (tester) async {
-    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
+    await tester.pumpWidget(
+      RakuchinReportApp(
+        repository: FirestoreGlucoseRecordRepository(
+          firestore: FakeFirebaseFirestore(),
+        ),
+        auth: FakeAuthService(),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(TextFormField).at(0),
@@ -99,7 +108,14 @@ void main() {
   });
 
   testWidgets('ログイン成功でカレンダーへ進み、戻る操作では終了確認を表示する', (tester) async {
-    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
+    await tester.pumpWidget(
+      RakuchinReportApp(
+        repository: FirestoreGlucoseRecordRepository(
+          firestore: FakeFirebaseFirestore(),
+        ),
+        auth: FakeAuthService(),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(LoginPage), findsOneWidget);
     await tester.enterText(
@@ -136,7 +152,14 @@ void main() {
   });
 
   testWidgets('モード切り替えはメールを保持し、パスワードとエラーを消す', (tester) async {
-    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
+    await tester.pumpWidget(
+      RakuchinReportApp(
+        repository: FirestoreGlucoseRecordRepository(
+          firestore: FakeFirebaseFirestore(),
+        ),
+        auth: FakeAuthService(),
+      ),
+    );
     await tester.pumpAndSettle();
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), 'sample@example.com');
@@ -172,7 +195,14 @@ void main() {
   });
 
   testWidgets('パスワードを表示・非表示に切り替えられる', (tester) async {
-    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
+    await tester.pumpWidget(
+      RakuchinReportApp(
+        repository: FirestoreGlucoseRecordRepository(
+          firestore: FakeFirebaseFirestore(),
+        ),
+        auth: FakeAuthService(),
+      ),
+    );
     await tester.pumpAndSettle();
     final field = find.byType(TextField).last;
     expect(tester.widget<TextField>(field).obscureText, isTrue);
@@ -185,7 +215,14 @@ void main() {
   });
 
   testWidgets('ログインで不正な形式を拒否する', (tester) async {
-    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
+    await tester.pumpWidget(
+      RakuchinReportApp(
+        repository: FirestoreGlucoseRecordRepository(
+          firestore: FakeFirebaseFirestore(),
+        ),
+        auth: FakeAuthService(),
+      ),
+    );
     await tester.pumpAndSettle();
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), 'mock');
@@ -198,7 +235,14 @@ void main() {
   });
 
   testWidgets('新規登録ではパスワード条件を確認し、確認待ちへ進む', (tester) async {
-    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
+    await tester.pumpWidget(
+      RakuchinReportApp(
+        repository: FirestoreGlucoseRecordRepository(
+          firestore: FakeFirebaseFirestore(),
+        ),
+        auth: FakeAuthService(),
+      ),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('registerTab')));
     await tester.pumpAndSettle();
@@ -220,7 +264,14 @@ void main() {
   });
 
   testWidgets('パスワード再設定のメール入力画面を開く', (tester) async {
-    await tester.pumpWidget(RakuchinReportApp(auth: FakeAuthService()));
+    await tester.pumpWidget(
+      RakuchinReportApp(
+        repository: FirestoreGlucoseRecordRepository(
+          firestore: FakeFirebaseFirestore(),
+        ),
+        auth: FakeAuthService(),
+      ),
+    );
     await tester.pumpAndSettle();
     final helper = find.text('パスワードを忘れた方');
     await tester.ensureVisible(helper);
@@ -242,7 +293,12 @@ void main() {
           ).copyWith(textScaler: const TextScaler.linear(1.5)),
           child: child!,
         ),
-        home: RakuchinReportApp(auth: FakeAuthService()),
+        home: RakuchinReportApp(
+          repository: FirestoreGlucoseRecordRepository(
+            firestore: FakeFirebaseFirestore(),
+          ),
+          auth: FakeAuthService(),
+        ),
       ),
     );
     await tester.tap(find.byKey(const ValueKey('registerTab')));

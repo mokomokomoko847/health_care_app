@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && request.auth.token.email_verified == true;
+    }
+    function validRecord() {
+      let data = request.resource.data;
+      return data.keys().hasAll([
+          'recordedAt', 'bloodSugarMgDl', 'mealTiming', 'memo',
+          'photoPaths', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'recordedAt', 'bloodSugarMgDl', 'mealTiming', 'memo',
+          'photoPaths', 'createdAt', 'updatedAt'
+        ])
+        && data.recordedAt is timestamp
+        && data.recordedAt <= request.time
+        && data.bloodSugarMgDl is int
+        && data.bloodSugarMgDl >= 0 && data.bloodSugarMgDl <= 600
+        && data.mealTiming in ['beforeMeal', 'afterMeal']
+        && data.memo is string && data.memo.size() <= 50
+        // 写真の保存を実装するまでは空リストのみ許可する。
+        && data.photoPaths is list && data.photoPaths.size() == 0
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+    match /users/{userId}/glucose_records/{recordId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && validRecord();
+      // 訂正履歴を伴う編集・削除は後続で実装するまで拒否する。
+      allow update, delete: if false;
+    }
+  }
+}

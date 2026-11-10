@@ -15,6 +15,9 @@ class FakeAuthService extends AuthService {
   @override
   bool isEmailVerified;
   @override
+  String? get userId => isSignedIn ? accountId : null;
+  String accountId = 'test-user';
+  @override
   String? email = 'sample@example.com';
   @override
   String? verificationError;

@@ -1,3 +1,5 @@
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
+import 'package:health_care_app/repositories/glucose_record_repository.dart';
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -16,7 +18,14 @@ import 'support/fake_auth_service.dart';
 void main() {
   Future<void> open(WidgetTester tester, FakeAuthService auth) async {
     addTearDown(auth.dispose);
-    await tester.pumpWidget(RakuchinReportApp(auth: auth));
+    await tester.pumpWidget(
+      RakuchinReportApp(
+        repository: FirestoreGlucoseRecordRepository(
+          firestore: FakeFirebaseFirestore(),
+        ),
+        auth: auth,
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -34,7 +43,12 @@ void main() {
       tester,
     ) async {
       final auth = FakeAuthService(isSignedIn: signedIn);
-      final router = createAppRouter(auth: auth);
+      final router = createAppRouter(
+        repository: FirestoreGlucoseRecordRepository(
+          firestore: FakeFirebaseFirestore(),
+        ),
+        auth: auth,
+      );
       addTearDown(router.dispose);
       addTearDown(auth.dispose);
       await tester.pumpWidget(MaterialApp.router(routerConfig: router));
