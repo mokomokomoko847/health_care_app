@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
 
 import '../models/glucose_record.dart';
 import '../models/glucose_record_validator.dart';
@@ -111,6 +112,11 @@ class FirestoreGlucoseRecordRepository implements GlucoseRecordRepository {
 }
 
 String recordErrorMessage(Object error) {
+  // ネイティブプラグインの追加はホットリスタートだけでは反映されない。
+  if (error is MissingPluginException ||
+      (error is PlatformException && error.code == 'channel-error')) {
+    return '保存機能を読み込めませんでした。アプリを完全に終了して起動し直してください。開発中の場合はアプリを停止し、再ビルドしてください。';
+  }
   if (error is FirebaseException) {
     return switch (error.code) {
       'unavailable' || 'deadline-exceeded' => '通信できません。接続を確認して、もう一度お試しください。',

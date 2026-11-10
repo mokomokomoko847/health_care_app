@@ -75,8 +75,9 @@ HostingとConsole設定後は再設定メールからアプリ内でパスワー
 これらとApp Checkの実機確認・強制適用を含むMVP全体の完成条件は、まだ満たしていません。
 
 既存のFirebaseプロジェクトにはFirestoreデータベースが存在します。
-本番Security Rulesの反映と実機確認は別途必要です。以下のコマンドは本番のルールを置き換えるため、
-内容を確認してから実行してください。この変更では本番へのデプロイは実行していません。
+初回実装時は本番Security Rulesを未反映でしたが、2026-11-10の保存失敗調査で、
+本番が全読み書き拒否の初期ルールだったことを確認し、ルールテスト4件の成功後に反映しました。
+実機確認は別途必要です。以下のコマンドは本番のルールを置き換えるため、内容を確認してから実行してください。
 
 ```sh
 firebase deploy --only firestore:rules --project healthcare-da878
@@ -88,6 +89,10 @@ firebase deploy --only firestore:rules --project healthcare-da878
 機内モードで保存した場合に入力を保持してエラーとなり、再接続だけでは自動保存されないことも確認してください。
 
 ### ローカル検証
+
+`cloud_firestore` などネイティブプラグインを追加・更新した場合は、実行中のアプリを停止して
+`fvm flutter run` で再ビルドしてください。ホットリロード／ホットリスタートだけでは
+iOS / Android側のプラグインが反映されず、保存・取得時に `channel-error` が発生します。
 
 ```sh
 fvm flutter test

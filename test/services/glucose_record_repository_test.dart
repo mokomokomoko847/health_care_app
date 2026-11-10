@@ -1,10 +1,24 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:health_care_app/models/glucose_record.dart';
 import 'package:health_care_app/repositories/glucose_record_repository.dart';
 
 void main() {
+  test('ネイティブプラグイン未反映時は再ビルドを案内する', () {
+    for (final error in [
+      MissingPluginException(),
+      PlatformException(code: 'channel-error'),
+    ]) {
+      expect(recordErrorMessage(error), contains('再ビルド'));
+    }
+    expect(
+      recordErrorMessage(PlatformException(code: 'other')),
+      '処理に失敗しました。もう一度お試しください。',
+    );
+  });
+
   late FakeFirebaseFirestore firestore;
   late FirestoreGlucoseRecordRepository repository;
   final day = DateTime(2026, 1, 15);
