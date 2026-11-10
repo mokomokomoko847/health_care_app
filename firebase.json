@@ -1,1 +1,63 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"healthcare-da878","appId":"1:276991603463:android:f8902668077c02ed510ba2","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"healthcare-da878","appId":"1:276991603463:ios:d4e591f574ea7e3f510ba2","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"healthcare-da878","configurations":{"android":"1:276991603463:android:f8902668077c02ed510ba2","ios":"1:276991603463:ios:d4e591f574ea7e3f510ba2"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "healthcare-da878",
+          "appId": "1:276991603463:android:f8902668077c02ed510ba2",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "healthcare-da878",
+          "appId": "1:276991603463:ios:d4e591f574ea7e3f510ba2",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "healthcare-da878",
+          "configurations": {
+            "android": "1:276991603463:android:f8902668077c02ed510ba2",
+            "ios": "1:276991603463:ios:d4e591f574ea7e3f510ba2"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "hosting",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/auth-action",
+        "destination": "/auth-action.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Referrer-Policy",
+            "value": "no-referrer"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          },
+          {
+            "key": "X-Content-Type-Options",
+            "value": "nosniff"
+          }
+        ]
+      }
+    ]
+  }
+}

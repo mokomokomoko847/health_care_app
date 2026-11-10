@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>楽ちん報告アプリで開く</title>
+  <style>[hidden]{display:none!important}body{font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:1.5rem;line-height:1.7}a{display:inline-block;padding:.8rem 1.5rem;background:#1d4ed8;color:white;border-radius:.75rem;text-decoration:none}</style>
+</head>
+<body>
+  <h1>楽ちん報告アプリで開く</h1>
+  <p id="message">アプリをインストールした端末で、下のボタンを押してください。</p>
+  <a id="open" hidden>アプリを開く</a>
+  <script>
+    // 認証コードだけを固定のアプリURLへ渡す。任意の遷移先は受け付けない。
+    const params = new URLSearchParams(location.search);
+    const mode = params.get('mode');
+    const code = params.get('oobCode');
+    if ((mode === 'resetPassword' || mode === 'verifyEmail') && code) {
+      const target = new URL('rakuchinreport://auth/auth-action');
+      target.searchParams.set('mode', mode);
+      target.searchParams.set('oobCode', code);
+      const button = document.getElementById('open');
+      button.href = target.href;
+      button.hidden = false;
+    } else {
+      document.getElementById('message').textContent = 'リンクが無効です。アプリからメールを再送してください。';
+    }
+  </script>
+</body>
+</html>

@@ -13,7 +13,7 @@
 ## 技術スタック
 
 - Flutter / Dart
-- 認証・データ保存: Firebase（移行予定。現在のアプリ実装は sqflite、ログインは未実装）
+- 認証・データ保存: Firebase（移行予定。現在の記録保存は sqflite、メール・パスワード認証は接続済み）
 - 写真取得: image_picker
 - 状態管理: setState のみ（Prototype 1）
 

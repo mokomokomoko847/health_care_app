@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -20,7 +21,7 @@ class CalendarPage extends StatefulWidget {
   final Set<DateTime> recordedDates;
   final ValueChanged<DateTime>? onDateSelected;
   final VoidCallback? onCreateRecord;
-  final VoidCallback? onLogout;
+  final FutureOr<void> Function()? onLogout;
 
   @override
   State<CalendarPage> createState() => _CalendarPageState();
@@ -37,6 +38,7 @@ class _CalendarPageState extends State<CalendarPage>
 
   late CalendarMonth _month;
   bool _exitDialogOpen = false;
+  bool _loggingOut = false;
 
   DateTime get _today => CalendarMonth.dateOnly(widget.today ?? DateTime.now());
 
@@ -192,12 +194,23 @@ class _CalendarPageState extends State<CalendarPage>
       ),
       actions: [
         TextButton(
-          onPressed:
-              widget.onLogout ??
-              () => _showUnavailable(
-                'ログアウト',
-                'Firebase認証が未接続のため、ログアウト処理は実行できません。',
-              ),
+          onPressed: _loggingOut
+              ? null
+              : () async {
+                  if (widget.onLogout == null) {
+                    await _showUnavailable(
+                      'ログアウト',
+                      'Firebase認証が未接続のため、ログアウト処理は実行できません。',
+                    );
+                    return;
+                  }
+                  setState(() => _loggingOut = true);
+                  try {
+                    await widget.onLogout!();
+                  } finally {
+                    if (mounted) setState(() => _loggingOut = false);
+                  }
+                },
           style: TextButton.styleFrom(
             foregroundColor: _primary,
             minimumSize: const Size(48, 44),
