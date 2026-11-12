@@ -6,7 +6,13 @@ service cloud.firestore {
         && request.auth.uid == userId
         && request.auth.token.email_verified == true;
     }
-    function validRecord() {
+    function validPhotoPath(data, index, userId, recordId) {
+      return data.photoPaths.size() <= index || (
+        data.photoPaths[index] is string
+        && data.photoPaths[index].matches('users/' + userId + '/glucose_records/' + recordId + '/photos/[a-f0-9]{64}')
+      );
+    }
+    function validRecord(userId, recordId) {
       let data = request.resource.data;
       return data.keys().hasAll([
           'recordedAt', 'bloodSugarMgDl', 'mealTiming', 'memo',
@@ -22,14 +28,16 @@ service cloud.firestore {
         && data.bloodSugarMgDl >= 0 && data.bloodSugarMgDl <= 600
         && data.mealTiming in ['beforeMeal', 'afterMeal']
         && data.memo is string && data.memo.size() <= 50
-        // 写真の保存を実装するまでは空リストのみ許可する。
-        && data.photoPaths is list && data.photoPaths.size() == 0
+        && data.photoPaths is list && data.photoPaths.size() <= 3
+        && validPhotoPath(data, 0, userId, recordId)
+        && validPhotoPath(data, 1, userId, recordId)
+        && validPhotoPath(data, 2, userId, recordId)
         && data.createdAt == request.time
         && data.updatedAt == request.time;
     }
     match /users/{userId}/glucose_records/{recordId} {
       allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && validRecord();
+      allow create: if isOwner(userId) && validRecord(userId, recordId);
       // 訂正履歴を伴う編集・削除は後続で実装するまで拒否する。
       allow update, delete: if false;
     }

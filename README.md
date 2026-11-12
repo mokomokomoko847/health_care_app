@@ -55,7 +55,7 @@ HostingとConsole設定後は再設定メールからアプリ内でパスワー
 ## ユーザー別のFirestore記録
 
 確認済みユーザーのUIDを使用し、`users/{uid}/glucose_records/{recordId}` に
-測定日時（Timestamp）・血糖値・食前／食後・メモ・写真参照（現在は空）・作成／更新日時を保存します。
+測定日時（Timestamp）・血糖値・食前／食後・メモ・写真参照・作成／更新日時を保存します。
 新規保存、月別の記録日表示、日別詳細の日時昇順表示をFirestoreへ接続しました。
 サンプル記録は通常起動で表示しません。既存SQLiteデータの自動移行・削除は行いません。
 
@@ -69,8 +69,8 @@ HostingとConsole設定後は再設定メールからアプリ内でパスワー
 
 ### 今回の対象外と本番設定
 
-写真のクラウド保存はCloud Storageの課金設定を確認する別工程です。
-通常起動では写真追加を無効にし、写真なしで保存できることを案内します。
+写真のクラウド保存の実装は下記「記録入力の写真」を参照してください。
+Cloud Storageの課金設定・本番ルール反映・実機確認は別工程です。
 編集・削除・訂正履歴も別工程で、現在のFirestoreルールは更新・削除を拒否します。
 これらとApp Checkの実機確認・強制適用を含むMVP全体の完成条件は、まだ満たしていません。
 
@@ -105,6 +105,60 @@ Flutterテストでは保存・取得・日付境界・再試行・画面更新�
 ルールテストは本番に接続しないデモプロジェクトで実行し、本人の登録・取得と、
 未認証／未確認／別ユーザー・不正データ・未実装の操作の拒否を検証します。
 App Checkの強制適用はエミュレーターのルールテストで検証できないため、公開前に実機で確認してください。
+
+## 記録入力の写真
+
+記録入力の「カメラ撮影」「画像選択」から最大3枚を取り込み、プレビューで確認・削除できます。
+取り込み時に長辺1600px・画質85を指定し、保存時は1枚10MB以下の画像を受け付けます。
+キャンセル時は入力を保持し、権限拒否時には設定の案内を表示します。
+
+- 取得: `lib/services/photo_picker_service.dart`
+- 画像ファイルの保存・取得: `lib/services/record_photo_storage_service.dart`
+- 保存順序と後片付け: `lib/repositories/glucose_record_repository.dart`
+- 画面: `lib/pages/record_input_page.dart`、`lib/pages/daily_detail_page.dart`、`lib/widgets/record_photo.dart`
+- 設定・ルール: `firebase.json`、`firestore.rules`、`storage.rules`、`pubspec.yaml`、`pubspec.lock`と各OSの生成されたプラグイン登録
+- 検証: `test/record_photos_test.dart`、`test/services/glucose_record_repository_test.dart`、`test/support/fake_photo_storage.dart`、`test/firestore/`のルールテスト
+
+画像は `users/{uid}/glucose_records/{recordId}/photos/{画像内容のSHA-256}` に保存します。
+Firestoreには端末の一時パスや公開URLを保存せず、Storage内の参照を保存します。
+日別詳細では認証付きで画像を取得し、取得失敗時は再読み込みできます。
+画像をアップロードした後にFirestoreのトランザクションで記録を確定します。
+途中失敗時はサーバーで確定結果を確認し、未参照の画像を回収します。
+確認・回収にも通信失敗した場合は成功扱いにせず、同じ入力画面での再試行時に後片付けします。
+この再試行情報はメモリ内のため、回収前にアプリを終了した場合には未参照画像が残る可能性があります。
+保存済み写真の変更・記録全体の削除は、既存の編集・削除機能と同様に今回の対象外です。
+
+### 本番で使う前の設定
+
+1. Firebase ConsoleでStorageのバケット `healthcare-da878.firebasestorage.app` と課金設定を確認します。
+   Cloud Storageは[Blazeプランが必要](https://firebase.google.com/docs/storage/flutter/start)です。
+   この変更では課金設定の有効化・バケット作成・本番ルール公開を行っていません。
+2. 内容の確認後、FirestoreとStorageのルールを両方公開します。
+   StorageルールはFirestoreを参照するため、初回公開時にはサービス間アクセスの権限設定も必要です。
+   Firebase CLI/Consoleの案内に沿って設定してください。
+
+   ```sh
+   firebase deploy --only firestore:rules,storage --project healthcare-da878
+   ```
+
+3. アプリを停止して `flutter run` で再ビルドします。追加したネイティブプラグインはホットリロードでは反映されません。
+4. Android/iOSの実機で「カメラ撮影／画像選択 → 最大3枚のプレビュー → 1枚削除 → 保存 → 日別詳細 → 再起動後も表示」を確認します。
+   権限拒否・選択キャンセル・通信切断時の入力保持と再試行も確認してください。
+   iOSシミュレーターではカメラ撮影を確認できません。
+
+### 写真のローカル検証
+
+```sh
+flutter test
+flutter analyze
+npm --prefix test/firestore ci
+firebase emulators:exec --only firestore,storage --project demo-health-care 'node --test --test-concurrency=1 test/firestore/*.rules.test.mjs'
+```
+
+Firebase CLIの単体配布版が同梱Nodeを優先してテストを起動できない環境では、
+最後のコマンド内の `node` を `which node` で確認した通常のNode実行ファイルの絶対パスに置き換えます。
+Firestore・Storage両方で本人の写真アクセス、他人・未確認・未認証の拒否、型・容量・枚数・参照先の制約を検証します。
+App Checkの強制適用と監視の実機検証は、共通要件に記載された別工程として残っています。
 
 ## Firebase接続前の実装履歴
 

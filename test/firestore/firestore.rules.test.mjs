@@ -85,3 +85,19 @@ test('血糖値の境界・メモ50文字を許可し未実装の変更や他の
   await assertFails(setDoc(doc(db, 'glucose_records/first'), valid()));
   await assertFails(setDoc(doc(db, `${path}/corrections/first`), valid()));
 });
+
+test('本人の同じ記録の写真参照を3枚まで許可し他人・別記録・URL・4枚を拒否する', async () => {
+  const db = owner();
+  const photo = (user = 'alice', record = 'first') => `users/${user}/glucose_records/${record}/photos/${'a'.repeat(64)}`;
+  for (const count of [1, 2, 3]) {
+    await assertSucceeds(setDoc(doc(db, `${path}-${count}`), {
+      ...valid(), photoPaths: Array(count).fill(photo('alice', `first-${count}`)),
+    }));
+  }
+  for (const photoPaths of [
+    [photo('bob')], [photo('alice', 'other')], ['https://example.com/photo.jpg'],
+    [123], Array(4).fill(photo()), [`${photo()}/extra`],
+  ]) {
+    await assertFails(setDoc(doc(db, path), { ...valid(), photoPaths }));
+  }
+});
