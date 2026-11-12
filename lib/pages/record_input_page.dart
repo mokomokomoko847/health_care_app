@@ -35,6 +35,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
   List<String> _validationErrors = <String>[];
   String? _recordId;
   bool _saving = false;
+  bool _pickingPhoto = false;
   bool _hasUnsavedChanges = false;
 
   @override
@@ -56,7 +57,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
   }
 
   Future<void> _handleBack() async {
-    if (_saving) return;
+    if (_saving || _pickingPhoto) return;
     if (!_hasUnsavedChanges) {
       Navigator.of(context).maybePop();
       return;
@@ -140,34 +141,46 @@ class _RecordInputPageState extends State<RecordInputPage> {
 
   // 写真追加の上限チェックと、取得後の状態更新を1か所にまとめる。
   Future<void> _addPhoto(Future<String?> Function() picker) async {
+    if (_saving || _pickingPhoto) return;
     if (_photoPaths.length >= GlucoseRecordValidator.maxPhotoCount) {
       _showMessage('写真は3枚まで追加できます。');
       return;
     }
 
-    final pickedPath = await picker();
-
-    if (pickedPath == null || !mounted) {
-      return;
+    setState(() => _pickingPhoto = true);
+    try {
+      final pickedPath = await picker();
+      if (pickedPath == null || !mounted) return;
+      setState(() {
+        _photoPaths = <String>[..._photoPaths, pickedPath];
+        _hasUnsavedChanges = true;
+      });
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      final message = switch (error.code) {
+        'camera_access_denied' ||
+        'camera_access_restricted' => 'カメラを利用できません。端末の設定でカメラへのアクセスを許可してください。',
+        'photo_access_denied' ||
+        'photo_access_restricted' => '写真を利用できません。端末の設定で写真へのアクセスを許可してください。',
+        _ => '画像を取り込めませんでした。もう一度お試しください。',
+      };
+      _showMessage(message);
+    } catch (_) {
+      if (mounted) _showMessage('画像を取り込めませんでした。もう一度お試しください。');
+    } finally {
+      if (mounted) setState(() => _pickingPhoto = false);
     }
-
-    setState(() {
-      _photoPaths = <String>[..._photoPaths, pickedPath];
-      _hasUnsavedChanges = true;
-    });
   }
 
-  void _removePhoto(String path) {
+  void _removePhoto(int index) {
     setState(() {
-      _photoPaths = _photoPaths
-          .where((photoPath) => photoPath != path)
-          .toList();
+      _photoPaths = List<String>.of(_photoPaths)..removeAt(index);
       _hasUnsavedChanges = true;
     });
   }
 
   Future<void> _saveRecord() async {
-    if (_saving) return;
+    if (_saving || _pickingPhoto) return;
     final validationResult = GlucoseRecordValidator.validate(
       recordedAt: _selectedDateTime,
       bloodSugarText: _bloodSugarController.text,
@@ -195,10 +208,6 @@ class _RecordInputPageState extends State<RecordInputPage> {
     final userId = widget.userId;
     if (repository == null || userId == null) {
       _showMessage('保存先が設定されていません。ログインし直してください。');
-      return;
-    }
-    if (_photoPaths.isNotEmpty) {
-      _showMessage('写真のクラウド保存は準備中です。写真を外して保存してください。');
       return;
     }
     setState(() => _saving = true);
@@ -240,7 +249,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_saving && !_hasUnsavedChanges,
+      canPop: !_saving && !_pickingPhoto && !_hasUnsavedChanges,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop && _hasUnsavedChanges) _handleBack();
       },
@@ -257,7 +266,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
           ),
           leading: IconButton(
             tooltip: '戻る',
-            onPressed: _saving ? null : _handleBack,
+            onPressed: _saving || _pickingPhoto ? null : _handleBack,
             icon: const Icon(Icons.chevron_left),
           ),
         ),
@@ -267,7 +276,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 430),
               child: AbsorbPointer(
-                absorbing: _saving,
+                absorbing: _saving || _pickingPhoto,
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   children: [
@@ -288,7 +297,9 @@ class _RecordInputPageState extends State<RecordInputPage> {
                     SizedBox(
                       height: 52,
                       child: FilledButton(
-                        onPressed: _saving ? null : _saveRecord,
+                        onPressed: _saving || _pickingPhoto
+                            ? null
+                            : _saveRecord,
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF1D4ED8),
                           foregroundColor: Colors.white,
@@ -532,20 +543,26 @@ class _RecordInputPageState extends State<RecordInputPage> {
             Expanded(
               child: _PhotoActionButton(
                 icon: Icons.photo_camera,
-                label: 'カメラで撮影',
-                onPressed: widget.repository == null
-                    ? _addPhotoFromCamera
-                    : null,
+                label: 'カメラ撮影',
+                onPressed:
+                    _pickingPhoto ||
+                        _photoPaths.length >=
+                            GlucoseRecordValidator.maxPhotoCount
+                    ? null
+                    : _addPhotoFromCamera,
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: _PhotoActionButton(
                 icon: Icons.image_outlined,
-                label: '写真を選択',
-                onPressed: widget.repository == null
-                    ? _addPhotoFromGallery
-                    : null,
+                label: '画像選択',
+                onPressed:
+                    _pickingPhoto ||
+                        _photoPaths.length >=
+                            GlucoseRecordValidator.maxPhotoCount
+                    ? null
+                    : _addPhotoFromGallery,
               ),
             ),
           ],
@@ -563,7 +580,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
                       ? _emptyPhotoSlot(index + 1)
                       : _PhotoPreviewCard(
                           path: path,
-                          onRemove: () => _removePhoto(path),
+                          onRemove: () => _removePhoto(index),
                         ),
                 ),
               ),
@@ -572,9 +589,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          widget.repository == null
-              ? '最大3枚まで登録できます（0枚でも保存可能）'
-              : '写真付きの保存は準備中です。現在は写真なしで保存できます。',
+          _pickingPhoto ? '画像を取り込み中…' : '最大3枚・1枚10MBまで登録できます（0枚でも保存可能）',
           style: const TextStyle(color: Color(0xFF4B5563), fontSize: 14),
         ),
       ],
