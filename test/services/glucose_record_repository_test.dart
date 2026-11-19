@@ -1,12 +1,15 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:health_care_app/models/glucose_record.dart';
 import 'package:health_care_app/repositories/glucose_record_repository.dart';
-import 'dart:io';
-import '../support/fake_photo_storage.dart';
 import 'package:health_care_app/services/record_photo_storage_service.dart';
+
+import '../support/fake_photo_storage.dart';
 
 void main() {
   test('ネイティブプラグイン未反映時は再ビルドを案内する', () {
@@ -187,18 +190,52 @@ void main() {
   test('後片付け失敗を通知し、次回保存では残った写真を回収する', () async {
     photos.failAtUpload = 1;
     photos.failDelete = true;
+    photos.uploadError = FirebaseException(
+      plugin: 'firebase_storage',
+      code: 'bucket-not-found',
+    );
     await expectLater(
       repository.create(
         'alice',
         'meal',
         record(day).copyWith(photoPaths: [photoPath]),
       ),
-      throwsA(isA<PhotoStorageException>()),
+      throwsA(
+        isA<PhotoStorageException>().having(
+          (error) => error.message,
+          'message',
+          allOf(contains('バケットと課金設定'), contains('同じ入力画面')),
+        ),
+      ),
     );
     expect(photos.files, isNotEmpty);
     photos.failDelete = false;
     await repository.create('alice', 'meal', record(day));
     expect(photos.files, isEmpty);
+  });
+
+  test('同じ記録の保存中は別の保存で写真を回収しない', () async {
+    final uploaded = Completer<void>();
+    final resume = Completer<void>();
+    photos.afterUpload = () {
+      uploaded.complete();
+      return resume.future;
+    };
+    final entry = record(day).copyWith(photoPaths: [photoPath]);
+    final save = repository.create('alice', 'meal', entry);
+    await uploaded.future;
+    try {
+      await expectLater(
+        repository.create('alice', 'meal', record(day)),
+        throwsA(isA<PhotoStorageException>()),
+      );
+    } finally {
+      resume.complete();
+      await save;
+    }
+    final saved = await firestore.doc('users/alice/glucose_records/meal').get();
+    expect(saved.data()!['photoPaths'], photos.files.keys.toList());
+    expect(photos.files, hasLength(1));
   });
 
   test('写真アップロード後に記録の確定が失敗した場合も写真を回収する', () async {
@@ -278,6 +315,33 @@ void main() {
       ),
       throwsArgumentError,
     );
+    expect(photos.uploadCalls, 0);
+  });
+
+  test('拡張子を変えた画像以外のファイルと消えた写真を保存しない', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final renamed = await File(
+      '${temporary.path}/invalid.png',
+    ).writeAsString('invalid');
+    for (final (path, message) in [
+      (renamed.path, '画像ファイルを選択'),
+      ('${temporary.path}/missing.png', '写真を選び直して'),
+    ]) {
+      await expectLater(
+        repository.create(
+          'alice',
+          'bad',
+          record(day).copyWith(photoPaths: [path]),
+        ),
+        throwsA(
+          isA<PhotoStorageException>().having(
+            (error) => error.message,
+            'message',
+            contains(message),
+          ),
+        ),
+      );
+    }
     expect(photos.uploadCalls, 0);
   });
 }

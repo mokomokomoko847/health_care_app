@@ -70,7 +70,7 @@ HostingとConsole設定後は再設定メールからアプリ内でパスワー
 ### 今回の対象外と本番設定
 
 写真のクラウド保存の実装は下記「記録入力の写真」を参照してください。
-Cloud Storageの課金設定・本番ルール反映・実機確認は別工程です。
+Cloud Storageの本番設定と実機確認の状況は下記「本番設定と実機確認」を参照してください。
 編集・削除・訂正履歴も別工程で、現在のFirestoreルールは更新・削除を拒否します。
 これらとApp Checkの実機確認・強制適用を含むMVP全体の完成条件は、まだ満たしていません。
 
@@ -128,12 +128,15 @@ Firestoreには端末の一時パスや公開URLを保存せず、Storage内の�
 この再試行情報はメモリ内のため、回収前にアプリを終了した場合には未参照画像が残る可能性があります。
 保存済み写真の変更・記録全体の削除は、既存の編集・削除機能と同様に今回の対象外です。
 
-### 本番で使う前の設定
+### 本番設定と実機確認
+
+2026-11-19に、`healthcare-da878` でBlazeを有効化し、東京リージョン
+（`asia-northeast1`）に既定のStorageバケットを作成しました。
+Firestore・Storageルールを公開し、StorageからFirestoreを参照する権限を設定しました。
 
 1. Firebase ConsoleでStorageのバケット `healthcare-da878.firebasestorage.app` と課金設定を確認します。
    Cloud Storageは[Blazeプランが必要](https://firebase.google.com/docs/storage/flutter/start)です。
-   この変更では課金設定の有効化・バケット作成・本番ルール公開を行っていません。
-2. 内容の確認後、FirestoreとStorageのルールを両方公開します。
+2. 今後ルールを変更する際は、エミュレーターで検証してから両方を公開します。
    StorageルールはFirestoreを参照するため、初回公開時にはサービス間アクセスの権限設定も必要です。
    Firebase CLI/Consoleの案内に沿って設定してください。
 

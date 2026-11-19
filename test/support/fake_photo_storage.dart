@@ -12,6 +12,7 @@ class FakePhotoStorage extends RecordPhotoStorageService {
   int uploadCalls = 0;
   int readCalls = 0;
   int? failAtUpload;
+  Object? uploadError;
   bool failDelete = false;
   Future<void> Function()? afterUpload;
 
@@ -19,7 +20,9 @@ class FakePhotoStorage extends RecordPhotoStorageService {
   Future<void> upload(PreparedRecordPhoto photo) async {
     uploadCalls++;
     files[photo.path] = photo.bytes;
-    if (uploadCalls == failAtUpload) throw Exception('upload failed');
+    if (uploadCalls == failAtUpload) {
+      throw uploadError ?? Exception('upload failed');
+    }
     await afterUpload?.call();
   }
 

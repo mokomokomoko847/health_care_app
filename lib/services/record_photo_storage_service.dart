@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -33,18 +34,8 @@ class RecordPhotoStorageService {
   ) async {
     final photos = <PreparedRecordPhoto>[];
     for (final localPath in localPaths) {
-      final file = File(localPath);
-      if (await file.length() > maxPhotoBytes) {
-        throw const PhotoStorageException('写真は1枚10MB以下にしてください。');
-      }
-      final bytes = await file.readAsBytes();
-      final contentType = lookupMimeType(localPath, headerBytes: bytes);
-      if (bytes.isEmpty ||
-          bytes.length > maxPhotoBytes ||
-          contentType == null ||
-          !contentType.startsWith('image/')) {
-        throw const PhotoStorageException('画像ファイルを選択してください（1枚10MB以下）。');
-      }
+      final bytes = await _readLocalPhoto(localPath);
+      final contentType = await _imageContentType(localPath, bytes);
       // 内容から名前を決め、保存の再試行でも同じ写真を重複作成しない。
       final name = sha256.convert(bytes).toString();
       photos.add(
@@ -56,6 +47,38 @@ class RecordPhotoStorageService {
       );
     }
     return photos;
+  }
+
+  Future<Uint8List> _readLocalPhoto(String path) async {
+    final file = File(path);
+    try {
+      if (await file.length() <= maxPhotoBytes) {
+        final bytes = await file.readAsBytes();
+        if (bytes.length <= maxPhotoBytes) return bytes;
+      }
+    } on FileSystemException {
+      throw const PhotoStorageException('写真を読み込めませんでした。写真を選び直してください。');
+    }
+    throw const PhotoStorageException('写真は1枚10MB以下にしてください。');
+  }
+
+  Future<String> _imageContentType(String path, Uint8List bytes) async {
+    final headerType = lookupMimeType('', headerBytes: bytes);
+    if (headerType?.startsWith('image/') == true) return headerType!;
+    // ヘッダーの定義がない形式は、Flutterで表示できることを確かめる。
+    final extensionType = lookupMimeType(path);
+    if (headerType == null &&
+        bytes.isNotEmpty &&
+        extensionType?.startsWith('image/') == true) {
+      try {
+        final codec = await ui.instantiateImageCodec(bytes, targetWidth: 1);
+        codec.dispose();
+        return extensionType!;
+      } on Exception {
+        // 拡張子と実データが一致しないファイルは登録しない。
+      }
+    }
+    throw const PhotoStorageException('画像ファイルを選択してください（1枚10MB以下）。');
   }
 
   Future<void> upload(PreparedRecordPhoto photo) async {
@@ -81,6 +104,6 @@ class RecordPhotoStorageService {
   }
 
   // 公開URLを発行せず、取得時にもFirebaseの認証とルールを適用する。
-  Future<Uint8List?> read(String path) =>
+  Future<Uint8List?> read(String path) async =>
       _storage.ref(path).getData(maxPhotoBytes);
 }
