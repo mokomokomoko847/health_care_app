@@ -27,6 +27,7 @@ class FirestoreGlucoseRecordRepository implements GlucoseRecordRepository {
   final RecordPhotoStorageService _photoStorage;
   final Map<String, Set<String>> _pendingPhotos = {};
   final Set<String> _activeSaves = {};
+  static const _dailyRecordLimit = 20;
   FirebaseFirestore get _firestore =>
       _providedFirestore ?? FirebaseFirestore.instance;
 
@@ -40,6 +41,61 @@ class FirestoreGlucoseRecordRepository implements GlucoseRecordRepository {
 
   @override
   String newRecordId() => _firestore.collection('users').doc().id;
+
+  DateTime _jstDay(DateTime date) {
+    final jst = date.toUtc().add(const Duration(hours: 9));
+    return DateTime.utc(jst.year, jst.month, jst.day);
+  }
+
+  Future<void> _reserveUpload(
+    String userId,
+    String recordId,
+    List<String> photoPaths,
+  ) async {
+    final user = _firestore.collection('users').doc(userId);
+    final reservation = user.collection('record_uploads').doc(recordId);
+    final quota = user.collection('record_limits').doc('current');
+    await _firestore.runTransaction((transaction) async {
+      final existing = await transaction.get(reservation);
+      final today = _jstDay(DateTime.now());
+      if (existing.exists) {
+        final data = existing.data()!;
+        if (_jstDay((data['createdAt'] as Timestamp).toDate()) == today &&
+            listEquals(
+              List<String>.from(data['photoPaths'] as List),
+              photoPaths,
+            )) {
+          return;
+        }
+        throw const PhotoStorageException(
+          '写真が変更されたか、登録枠の日付が変わりました。',
+          retryWithNewRecordId: true,
+        );
+      }
+
+      final limit = (await transaction.get(quota)).data();
+      var count = 0;
+      if (limit != null &&
+          _jstDay((limit['updatedAt'] as Timestamp).toDate()) == today) {
+        count = limit['count'] as int;
+      }
+      if (count >= _dailyRecordLimit) {
+        throw const PhotoStorageException(
+          '1日の登録上限（20件）に達しました。日本時間の翌日以降に登録してください。',
+        );
+      }
+      // 画像送信前に枠を確保し、複数端末からの保存も同じ上限に含める。
+      transaction.set(quota, {
+        'count': count + 1,
+        'lastRecordId': recordId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      transaction.set(reservation, {
+        'photoPaths': photoPaths,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    });
+  }
 
   @override
   Future<void> create(
@@ -119,6 +175,7 @@ class FirestoreGlucoseRecordRepository implements GlucoseRecordRepository {
         code: 'already-exists',
       );
     }
+    await _reserveUpload(userId, reference.id, storedRecord.photoPaths);
     final attemptedPhotos = <String>{};
     if (photos.isNotEmpty) _pendingPhotos[pendingKey] = attemptedPhotos;
     try {

@@ -69,6 +69,7 @@ class _RecordPhotoState extends State<RecordPhoto> {
         return Image.memory(
           snapshot.data!,
           fit: BoxFit.cover,
+          cacheWidth: 320,
           errorBuilder: (context, error, stackTrace) => _error(),
         );
       },

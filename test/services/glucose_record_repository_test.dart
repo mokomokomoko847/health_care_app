@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
@@ -8,10 +9,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:health_care_app/models/glucose_record.dart';
 import 'package:health_care_app/repositories/glucose_record_repository.dart';
 import 'package:health_care_app/services/record_photo_storage_service.dart';
+import 'package:image/image.dart' as image;
 
 import '../support/fake_photo_storage.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test('ネイティブプラグイン未反映時は再ビルドを案内する', () {
     for (final error in [
       MissingPluginException(),
@@ -156,8 +159,8 @@ void main() {
       day.add(const Duration(days: 1)),
     );
     final path = result.single.photoPaths.single;
-    expect(path, startsWith('users/alice/glucose_records/meal/photos/'));
-    expect(photos.files[path], testPhotoBytes);
+    expect(path, startsWith('users/alice/glucose_records/meal/compressed/'));
+    expect(image.decodeJpg(photos.files[path]!)?.width, 1);
     await repository.create('alice', 'meal', entry);
     expect(photos.uploadCalls, 1);
     await expectLater(
@@ -165,6 +168,52 @@ void main() {
       throwsA(isA<FirebaseException>()),
     );
     expect(photos.files, hasLength(1));
+  });
+
+  test('大きな画像を圧縮し、展開した画像の縦横比を保つ', () async {
+    final random = Random(17);
+    final original = image.Image(width: 1600, height: 1200);
+    for (final pixel in original) {
+      pixel.setRgb(
+        random.nextInt(256),
+        random.nextInt(256),
+        random.nextInt(256),
+      );
+    }
+    final raw = image.encodePng(original);
+    final file = await File(
+      '${temporary.path}/large-photo.png',
+    ).writeAsBytes(raw);
+    final prepared = (await photos.prepare('alice', 'meal', [
+      file.path,
+    ])).single;
+    expect(prepared.contentType, 'image/jpeg');
+    expect(prepared.bytes.length, lessThan(raw.length));
+    expect(prepared.bytes.length, lessThanOrEqualTo(256 * 1024));
+    final decoded = image.decodeJpg(prepared.bytes)!;
+    expect(decoded.width, lessThanOrEqualTo(1280));
+    expect(decoded.width / decoded.height, closeTo(1600 / 1200, 0.01));
+  });
+
+  test('20件目までは保存し、21件目は写真送信前に止める', () async {
+    for (var index = 0; index < 20; index++) {
+      await repository.create('alice', 'entry-$index', record(day));
+    }
+    await repository.create('alice', 'entry-19', record(day));
+    final entry = record(day).copyWith(photoPaths: [photoPath]);
+    await expectLater(
+      repository.create('alice', 'extra', entry),
+      throwsA(
+        isA<PhotoStorageException>().having(
+          (error) => error.message,
+          'message',
+          contains('20件'),
+        ),
+      ),
+    );
+    expect(photos.uploadCalls, 0);
+    await repository.create('bob', 'first', entry);
+    expect(photos.uploadCalls, 1);
   });
 
   test('途中のアップロード失敗では記録を作らず写真も回収し再試行できる', () async {
@@ -210,8 +259,18 @@ void main() {
     );
     expect(photos.files, isNotEmpty);
     photos.failDelete = false;
-    await repository.create('alice', 'meal', record(day));
+    await expectLater(
+      repository.create('alice', 'meal', record(day)),
+      throwsA(
+        isA<PhotoStorageException>().having(
+          (error) => error.retryWithNewRecordId,
+          'retryWithNewRecordId',
+          isTrue,
+        ),
+      ),
+    );
     expect(photos.files, isEmpty);
+    await repository.create('alice', 'replacement', record(day));
   });
 
   test('同じ記録の保存中は別の保存で写真を回収しない', () async {
@@ -223,7 +282,7 @@ void main() {
     };
     final entry = record(day).copyWith(photoPaths: [photoPath]);
     final save = repository.create('alice', 'meal', entry);
-    await uploaded.future;
+    await Future.any([uploaded.future, save]);
     try {
       await expectLater(
         repository.create('alice', 'meal', record(day)),
@@ -319,7 +378,6 @@ void main() {
   });
 
   test('拡張子を変えた画像以外のファイルと消えた写真を保存しない', () async {
-    TestWidgetsFlutterBinding.ensureInitialized();
     final renamed = await File(
       '${temporary.path}/invalid.png',
     ).writeAsString('invalid');

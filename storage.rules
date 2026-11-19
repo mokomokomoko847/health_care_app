@@ -6,20 +6,40 @@ service firebase.storage {
         && request.auth.uid == userId
         && request.auth.token.email_verified == true;
     }
+    function recordPath(userId, recordId) {
+      return /databases/(default)/documents/users/$(userId)/glucose_records/$(recordId);
+    }
+    function uploadPath(userId, recordId) {
+      return /databases/(default)/documents/users/$(userId)/record_uploads/$(recordId);
+    }
+    function storedPhotoPath(userId, recordId, photoId) {
+      return 'users/' + userId + '/glucose_records/' + recordId + '/compressed/' + photoId;
+    }
+    function reservedToday(userId, recordId, photoId) {
+      let upload = firestore.get(uploadPath(userId, recordId)).data;
+      return (upload.createdAt + duration.value(9, 'h')).date()
+          == (request.time + duration.value(9, 'h')).date()
+        && storedPhotoPath(userId, recordId, photoId) in upload.photoPaths;
+    }
+    // 旧形式の写真は本人が引き続き取得できる。
     match /users/{userId}/glucose_records/{recordId}/photos/{photoId} {
-      allow read: if isOwner(userId);
+      allow get: if isOwner(userId);
+    }
+    match /users/{userId}/glucose_records/{recordId}/compressed/{photoId} {
+      allow get: if isOwner(userId);
       allow create: if isOwner(userId)
-        && resource == null
         && photoId.matches('[a-f0-9]{64}')
         && request.resource.size > 0
-        && request.resource.size <= 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
-      // 保存済みの写真は上書きしない。未確定の写真のみ後片付けを許可する。
-      allow update: if false;
+        && request.resource.size <= 256 * 1024
+        && request.resource.contentType == 'image/jpeg'
+        && (request.resource.metadata == null || request.resource.metadata.size() == 0)
+        && reservedToday(userId, recordId, photoId)
+        && !firestore.exists(recordPath(userId, recordId));
+      // 確定した記録の写真は変更せず、アップロード失敗時のみ回収する。
       allow delete: if isOwner(userId)
-        && (!firestore.exists(/databases/(default)/documents/users/$(userId)/glucose_records/$(recordId))
-          || !('users/' + userId + '/glucose_records/' + recordId + '/photos/' + photoId
-            in firestore.get(/databases/(default)/documents/users/$(userId)/glucose_records/$(recordId)).data.photoPaths));
+        && !firestore.exists(recordPath(userId, recordId))
+        && storedPhotoPath(userId, recordId, photoId)
+          in firestore.get(uploadPath(userId, recordId)).data.photoPaths;
     }
   }
 }

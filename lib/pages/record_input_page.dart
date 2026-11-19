@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../models/glucose_record.dart';
 import '../models/glucose_record_validator.dart';
 import '../services/photo_picker_service.dart';
+import '../services/record_photo_storage_service.dart';
 import '../repositories/glucose_record_repository.dart';
 
 class RecordInputPage extends StatefulWidget {
@@ -213,7 +214,13 @@ class _RecordInputPageState extends State<RecordInputPage> {
     setState(() => _saving = true);
     try {
       _recordId ??= repository.newRecordId();
-      await repository.create(userId, _recordId!, record);
+      try {
+        await repository.create(userId, _recordId!, record);
+      } on PhotoStorageException catch (error) {
+        if (!error.retryWithNewRecordId || !mounted) rethrow;
+        _recordId = repository.newRecordId();
+        await repository.create(userId, _recordId!, record);
+      }
       if (!mounted) return;
       setState(() {
         _hasUnsavedChanges = false;
@@ -589,7 +596,7 @@ class _RecordInputPageState extends State<RecordInputPage> {
         ),
         const SizedBox(height: 8),
         Text(
-          _pickingPhoto ? '画像を取り込み中…' : '最大3枚・1枚10MBまで登録できます（0枚でも保存可能）',
+          _pickingPhoto ? '画像を取り込み中…' : '最大3枚・選択時は各10MBまで。保存時に自動で圧縮します。',
           style: const TextStyle(color: Color(0xFF4B5563), fontSize: 14),
         ),
       ],

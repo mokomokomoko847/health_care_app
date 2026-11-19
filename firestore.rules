@@ -6,11 +6,57 @@ service cloud.firestore {
         && request.auth.uid == userId
         && request.auth.token.email_verified == true;
     }
-    function validPhotoPath(data, index, userId, recordId) {
-      return data.photoPaths.size() <= index || (
-        data.photoPaths[index] is string
-        && data.photoPaths[index].matches('users/' + userId + '/glucose_records/' + recordId + '/photos/[a-f0-9]{64}')
-      );
+    function jstDay(time) {
+      return (time + duration.value(9, 'h')).date();
+    }
+    function quotaPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/record_limits/current;
+    }
+    function uploadPath(userId, recordId) {
+      return /databases/$(database)/documents/users/$(userId)/record_uploads/$(recordId);
+    }
+    function recordPath(userId, recordId) {
+      return /databases/$(database)/documents/users/$(userId)/glucose_records/$(recordId);
+    }
+    function validRecordId(recordId) {
+      return recordId is string && recordId.matches('[A-Za-z0-9_-]{1,64}');
+    }
+    function validPhotoPath(value, userId, recordId) {
+      let parts = value.split('/');
+      return parts.size() == 6
+        && parts[0] == 'users' && parts[1] == userId
+        && parts[2] == 'glucose_records' && parts[3] == recordId
+        && parts[4] == 'compressed' && parts[5].matches('[a-f0-9]{64}');
+    }
+    function validPhotoPaths(paths, userId, recordId) {
+      return paths is list && paths.size() <= 3
+        && (paths.size() < 1 || (paths[0] is string && validPhotoPath(paths[0], userId, recordId)))
+        && (paths.size() < 2 || (paths[1] is string && validPhotoPath(paths[1], userId, recordId)))
+        && (paths.size() < 3 || (paths[2] is string && validPhotoPath(paths[2], userId, recordId)));
+    }
+    function validQuota(userId, nextCount) {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['count', 'lastRecordId', 'updatedAt'])
+        && data.count is int && data.count == nextCount && data.count <= 20
+        && data.updatedAt == request.time
+        && validRecordId(data.lastRecordId)
+        && !exists(uploadPath(userId, data.lastRecordId))
+        && getAfter(uploadPath(userId, data.lastRecordId)).data.createdAt == request.time;
+    }
+    function validUpload(userId, recordId) {
+      let data = request.resource.data;
+      let quota = getAfter(quotaPath(userId)).data;
+      return validRecordId(recordId)
+        && data.keys().hasOnly(['photoPaths', 'createdAt'])
+        && data.createdAt == request.time
+        && validPhotoPaths(data.photoPaths, userId, recordId)
+        && quota.lastRecordId == recordId && quota.updatedAt == request.time
+        && !exists(recordPath(userId, recordId));
+    }
+    function matchesUpload(userId, recordId, photoPaths) {
+      let upload = get(uploadPath(userId, recordId)).data;
+      return jstDay(upload.createdAt) == jstDay(request.time)
+        && upload.photoPaths == photoPaths;
     }
     function validRecord(userId, recordId) {
       let data = request.resource.data;
@@ -28,16 +74,24 @@ service cloud.firestore {
         && data.bloodSugarMgDl >= 0 && data.bloodSugarMgDl <= 600
         && data.mealTiming in ['beforeMeal', 'afterMeal']
         && data.memo is string && data.memo.size() <= 50
-        && data.photoPaths is list && data.photoPaths.size() <= 3
-        && validPhotoPath(data, 0, userId, recordId)
-        && validPhotoPath(data, 1, userId, recordId)
-        && validPhotoPath(data, 2, userId, recordId)
+        && matchesUpload(userId, recordId, data.photoPaths)
         && data.createdAt == request.time
         && data.updatedAt == request.time;
     }
+    match /users/{userId}/record_limits/current {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && validQuota(userId, 1);
+      allow update: if isOwner(userId) && validQuota(userId,
+        jstDay(resource.data.updatedAt) == jstDay(request.time) ? resource.data.count + 1 : 1);
+    }
+    match /users/{userId}/record_uploads/{recordId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && validUpload(userId, recordId);
+    }
     match /users/{userId}/glucose_records/{recordId} {
       allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && validRecord(userId, recordId);
+      allow create: if isOwner(userId) && validRecordId(recordId)
+        && validRecord(userId, recordId);
       // 訂正履歴を伴う編集・削除は後続で実装するまで拒否する。
       allow update, delete: if false;
     }

@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:health_care_app/services/record_photo_storage_service.dart';
 
 final testPhotoBytes = base64Decode(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4P4/xPwAG3AKeybdB8wAAAABJRU5ErkJggg==',
 );
 
 class FakePhotoStorage extends RecordPhotoStorageService {

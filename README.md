@@ -109,7 +109,9 @@ App Checkの強制適用はエミュレーターのルールテストで検証�
 ## 記録入力の写真
 
 記録入力の「カメラ撮影」「画像選択」から最大3枚を取り込み、プレビューで確認・削除できます。
-取り込み時に長辺1600px・画質85を指定し、保存時は1枚10MB以下の画像を受け付けます。
+取り込める元画像は1枚10MBまでです。取り込み時は長辺1600px・画質85を指定します。
+保存前にアプリで長辺1280px以下のJPEGへ変換し、圧縮後の容量を1枚256 KiB以下にします。
+日次詳細では取得したJPEGをFlutterでデコードして表示します。
 キャンセル時は入力を保持し、権限拒否時には設定の案内を表示します。
 
 - 取得: `lib/services/photo_picker_service.dart`
@@ -119,10 +121,16 @@ App Checkの強制適用はエミュレーターのルールテストで検証�
 - 設定・ルール: `firebase.json`、`firestore.rules`、`storage.rules`、`pubspec.yaml`、`pubspec.lock`と各OSの生成されたプラグイン登録
 - 検証: `test/record_photos_test.dart`、`test/services/glucose_record_repository_test.dart`、`test/support/fake_photo_storage.dart`、`test/firestore/`のルールテスト
 
-画像は `users/{uid}/glucose_records/{recordId}/photos/{画像内容のSHA-256}` に保存します。
+新規画像は `users/{uid}/glucose_records/{recordId}/compressed/{圧縮済みJPEGのSHA-256}` に保存します。
+既存の `photos/` に保存された画像も日次詳細で取得できます。
 Firestoreには端末の一時パスや公開URLを保存せず、Storage内の参照を保存します。
 日別詳細では認証付きで画像を取得し、取得失敗時は再読み込みできます。
-画像をアップロードした後にFirestoreのトランザクションで記録を確定します。
+日本時間の登録日ごとに、メール確認済みの本人に20件までの登録枠を許可します。
+Firestoreトランザクションで登録枠を確保してから、予約した画像だけをアップロードし、記録を確定します。
+同じ予約の再試行は枠を追加消費しません。確定に至らなかった予約もその日の枠に含まれます。
+測定日時を過去に変更しても上限はその日の登録枠で判定します。
+写真3枚付きの記録を毎日20件保存すると、1人あたり画像は最大約15 MiB／日、
+30日間で約450 MiBになります。
 途中失敗時はサーバーで確定結果を確認し、未参照の画像を回収します。
 確認・回収にも通信失敗した場合は成功扱いにせず、同じ入力画面での再試行時に後片付けします。
 この再試行情報はメモリ内のため、回収前にアプリを終了した場合には未参照画像が残る可能性があります。
@@ -133,6 +141,8 @@ Firestoreには端末の一時パスや公開URLを保存せず、Storage内の�
 2026-11-19に、`healthcare-da878` でBlazeを有効化し、東京リージョン
 （`asia-northeast1`）に既定のStorageバケットを作成しました。
 Firestore・Storageルールを公開し、StorageからFirestoreを参照する権限を設定しました。
+圧縮と1日20件の上限に対応したルールは、新版アプリを配布し、利用端末の更新を確認してから
+公開します。切り替え後は旧版からの新規登録が拒否されるため、配布とルール公開は同じ切り替え作業で扱います。
 
 1. Firebase ConsoleでStorageのバケット `healthcare-da878.firebasestorage.app` と課金設定を確認します。
    Cloud Storageは[Blazeプランが必要](https://firebase.google.com/docs/storage/flutter/start)です。

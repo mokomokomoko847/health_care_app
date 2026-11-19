@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, test } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import { doc, setDoc, getDoc, getDocs, collection, updateDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { compressedPhotoPath, reserveUpload } from './record_uploads.mjs';
 
 let environment;
 const path = 'users/alice/glucose_records/first';
@@ -15,6 +16,12 @@ const valid = () => ({
   updatedAt: serverTimestamp(),
 });
 const owner = () => environment.authenticatedContext('alice', { email_verified: true }).firestore();
+const quotaPath = 'users/alice/record_limits/current';
+const reservationPath = (id) => `users/alice/record_uploads/${id}`;
+async function save(db, id, data = valid()) {
+  await reserveUpload(db, id, data.photoPaths);
+  await setDoc(doc(db, `users/alice/glucose_records/${id}`), data);
+}
 
 before(async () => {
   environment = await initializeTestEnvironment({
@@ -27,13 +34,13 @@ after(async () => environment?.cleanup());
 
 test('確認済み本人は登録・単体取得・一覧取得できる', async () => {
   const db = owner();
-  await assertSucceeds(setDoc(doc(db, path), valid()));
+  await assertSucceeds(save(db, 'first'));
   await assertSucceeds(getDoc(doc(db, path)));
   await assertSucceeds(getDocs(collection(db, 'users/alice/glucose_records')));
 });
 
 test('未認証・未確認・別ユーザーは読み書きできない', async () => {
-  await assertSucceeds(setDoc(doc(owner(), path), valid()));
+  await assertSucceeds(save(owner(), 'first'));
   const contexts = [
     environment.unauthenticatedContext(),
     environment.authenticatedContext('alice', { email_verified: false }),
@@ -45,6 +52,9 @@ test('未認証・未確認・別ユーザーは読み書きできない', async
     await assertFails(getDoc(doc(db, path)));
     await assertFails(getDocs(collection(db, 'users/alice/glucose_records')));
     await assertFails(setDoc(doc(db, 'users/alice/glucose_records/new'), valid()));
+    await assertFails(getDoc(doc(db, quotaPath)));
+    await assertFails(getDoc(doc(db, reservationPath('first'))));
+    await assertFails(reserveUpload(db, 'new'));
     await assertFails(updateDoc(doc(db, path), { bloodSugarMgDl: 130 }));
     await assertFails(deleteDoc(doc(db, path)));
   }
@@ -52,6 +62,7 @@ test('未認証・未確認・別ユーザーは読み書きできない', async
 
 test('必須項目欠落・型違反・範囲外・未来日時・余分な所有者フィールドを拒否する', async () => {
   const db = owner();
+  await assertSucceeds(reserveUpload(db, 'first'));
   const invalid = [
     { bloodSugarMgDl: -1 }, { bloodSugarMgDl: 601 },
     { bloodSugarMgDl: 1.5 }, { bloodSugarMgDl: '120' },
@@ -75,11 +86,11 @@ test('必須項目欠落・型違反・範囲外・未来日時・余分な所�
 test('血糖値の境界・メモ50文字を許可し未実装の変更や他のパスを拒否する', async () => {
   const db = owner();
   for (const bloodSugarMgDl of [0, 600]) {
-    await assertSucceeds(setDoc(doc(db, `${path}-${bloodSugarMgDl}`), {
+    await assertSucceeds(save(db, `first-${bloodSugarMgDl}`, {
       ...valid(), bloodSugarMgDl, memo: 'あ'.repeat(50),
     }));
   }
-  await assertSucceeds(setDoc(doc(db, path), valid()));
+  await assertSucceeds(save(db, 'first'));
   await assertFails(updateDoc(doc(db, path), { bloodSugarMgDl: 130 }));
   await assertFails(deleteDoc(doc(db, path)));
   await assertFails(setDoc(doc(db, 'glucose_records/first'), valid()));
@@ -88,16 +99,58 @@ test('血糖値の境界・メモ50文字を許可し未実装の変更や他の
 
 test('本人の同じ記録の写真参照を3枚まで許可し他人・別記録・URL・4枚を拒否する', async () => {
   const db = owner();
-  const photo = (user = 'alice', record = 'first') => `users/${user}/glucose_records/${record}/photos/${'a'.repeat(64)}`;
   for (const count of [1, 2, 3]) {
-    await assertSucceeds(setDoc(doc(db, `${path}-${count}`), {
-      ...valid(), photoPaths: Array(count).fill(photo('alice', `first-${count}`)),
+    await assertSucceeds(save(db, `first-${count}`, {
+      ...valid(), photoPaths: Array(count).fill(compressedPhotoPath('alice', `first-${count}`)),
     }));
   }
   for (const photoPaths of [
-    [photo('bob')], [photo('alice', 'other')], ['https://example.com/photo.jpg'],
-    [123], Array(4).fill(photo()), [`${photo()}/extra`],
+    [compressedPhotoPath('bob')], [compressedPhotoPath('alice', 'other')], ['https://example.com/photo.jpg'],
+    [123], Array(4).fill(compressedPhotoPath()), [`${compressedPhotoPath()}/extra`],
   ]) {
-    await assertFails(setDoc(doc(db, path), { ...valid(), photoPaths }));
+    await assertFails(reserveUpload(db, 'first', photoPaths));
   }
+  await assertSucceeds(reserveUpload(db, 'first', [compressedPhotoPath()]));
+  await assertFails(setDoc(doc(db, path), valid()));
+});
+
+test('予約なしの投稿とカウントの単独変更・削除・予約の再利用を拒否する', async () => {
+  const db = owner();
+  await assertFails(setDoc(doc(db, path), valid()));
+  await assertFails(setDoc(doc(db, reservationPath('first')), { photoPaths: [], createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(db, quotaPath), { count: 1, lastRecordId: 'first', updatedAt: serverTimestamp() }));
+  await assertSucceeds(save(db, 'first'));
+  await assertFails(reserveUpload(db, 'first'));
+  await assertFails(updateDoc(doc(db, quotaPath), { count: 0 }));
+  await assertFails(deleteDoc(doc(db, quotaPath)));
+  await assertFails(updateDoc(doc(db, reservationPath('first')), { photoPaths: [compressedPhotoPath()] }));
+});
+
+test('登録日で20件まで確保でき、測定日時を過去にしても21件目は登録できない', async () => {
+  const db = owner();
+  for (let index = 0; index < 19; index++) await save(db, `entry-${index}`);
+  const results = await Promise.allSettled([save(db, 'device-a'), save(db, 'device-b')]);
+  if (results.filter(result => result.status === 'fulfilled').length !== 1) {
+    throw new Error(`Exactly one concurrent final slot must succeed: ${JSON.stringify(results)}`);
+  }
+  await assertFails(reserveUpload(db, 'extra'));
+  await assertFails(setDoc(doc(db, 'users/alice/glucose_records/extra'), valid()));
+  const bob = environment.authenticatedContext('bob', { email_verified: true }).firestore();
+  await assertSucceeds(reserveUpload(bob, 'first', [], 'bob'));
+});
+
+test('日本時間で日付が変わると上限をリセットし、前日の予約からの投稿を拒否する', async () => {
+  const db = owner();
+  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const midnight = Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()) - 9 * 60 * 60 * 1000;
+  const yesterday = Timestamp.fromMillis(midnight - 1);
+  await environment.withSecurityRulesDisabled(async context => {
+    const admin = context.firestore();
+    await setDoc(doc(admin, quotaPath), { count: 20, lastRecordId: 'first', updatedAt: yesterday });
+    await setDoc(doc(admin, reservationPath('first')), { photoPaths: [], createdAt: yesterday });
+  });
+  await assertFails(setDoc(doc(db, path), valid()));
+  await assertSucceeds(save(db, 'next-day'));
+  const remaining = await getDoc(doc(db, quotaPath));
+  if (remaining.data().count !== 1) throw new Error('The next day must start at one.');
 });
