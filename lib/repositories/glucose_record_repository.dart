@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/glucose_record.dart';
 import '../models/glucose_record_validator.dart';
+import '../services/record_photo_storage_service.dart';
 
 abstract class GlucoseRecordRepository {
   String newRecordId();
@@ -15,10 +17,16 @@ abstract class GlucoseRecordRepository {
 }
 
 class FirestoreGlucoseRecordRepository implements GlucoseRecordRepository {
-  FirestoreGlucoseRecordRepository({FirebaseFirestore? firestore})
-    : _providedFirestore = firestore;
+  FirestoreGlucoseRecordRepository({
+    FirebaseFirestore? firestore,
+    RecordPhotoStorageService? photoStorage,
+  }) : _providedFirestore = firestore,
+       _photoStorage = photoStorage ?? RecordPhotoStorageService();
 
   final FirebaseFirestore? _providedFirestore;
+  final RecordPhotoStorageService _photoStorage;
+  final Map<String, Set<String>> _pendingPhotos = {};
+  final Set<String> _activeSaves = {};
   FirebaseFirestore get _firestore =>
       _providedFirestore ?? FirebaseFirestore.instance;
 
@@ -50,40 +58,121 @@ class FirestoreGlucoseRecordRepository implements GlucoseRecordRepository {
     if (record.recordedAt.isAfter(DateTime.now())) {
       throw ArgumentError('現在より未来の日時は保存できません。');
     }
-    // 写真を端末内パスのままクラウドへ保存しない。
-    if (record.photoPaths.isNotEmpty) {
-      throw StateError('写真のクラウド保存はまだ設定されていません。');
-    }
     final reference = _records(userId).doc(recordId);
-    // トランザクションはオフライン時に失敗し、保留書き込みを残さない。
-    // 入力画面が同じIDで再試行することで、応答が途切れた場合も重複登録を防ぐ。
-    await _firestore.runTransaction((transaction) async {
-      final existing = await transaction.get(reference);
-      if (existing.exists) {
-        final data = existing.data()!;
-        if ((data['recordedAt'] as Timestamp).toDate().isAtSameMomentAs(
-              record.recordedAt,
-            ) &&
-            data['bloodSugarMgDl'] == record.bloodSugarMgDl &&
-            data['mealTiming'] == record.mealTiming.name &&
-            data['memo'] == record.memo) {
-          return;
-        }
-        throw FirebaseException(
-          plugin: 'cloud_firestore',
-          code: 'already-exists',
+    if (!_activeSaves.add(reference.path)) {
+      throw const PhotoStorageException('この記録は保存中です。少し待ってからお試しください。');
+    }
+    try {
+      await _save(reference, userId, record);
+    } finally {
+      _activeSaves.remove(reference.path);
+    }
+  }
+
+  Future<void> _save(
+    DocumentReference<Map<String, dynamic>> reference,
+    String userId,
+    GlucoseRecord record,
+  ) async {
+    final photos = await _photoStorage.prepare(
+      userId,
+      reference.id,
+      record.photoPaths,
+    );
+    final storedRecord = record.copyWith(
+      photoPaths: photos.map((photo) => photo.path).toList(),
+    );
+    bool matches(Map<String, dynamic> data) =>
+        (data['recordedAt'] as Timestamp).toDate().isAtSameMomentAs(
+          record.recordedAt,
+        ) &&
+        data['bloodSugarMgDl'] == record.bloodSugarMgDl &&
+        data['mealTiming'] == record.mealTiming.name &&
+        data['memo'] == record.memo &&
+        listEquals(
+          List<String>.from(data['photoPaths'] as List? ?? const []),
+          storedRecord.photoPaths,
         );
+
+    // オンラインで既存結果を確かめてから写真をアップロードする。
+    final existing = await reference.get(
+      const GetOptions(source: Source.server),
+    );
+    // 前回の後片付け中に通信が切れた場合も、再試行時に回収する。
+    final pendingKey = reference.path;
+    Future<void> cleanPending(Map<String, dynamic>? data) async {
+      final referenced = data?['photoPaths'] as List? ?? [];
+      final pending = _pendingPhotos[pendingKey];
+      if (pending == null) return;
+      for (final path in pending.toList()) {
+        if (!referenced.contains(path)) await _photoStorage.delete(path);
+        pending.remove(path);
       }
-      transaction.set(reference, {
-        'recordedAt': Timestamp.fromDate(record.recordedAt),
-        'bloodSugarMgDl': record.bloodSugarMgDl,
-        'mealTiming': record.mealTiming.name,
-        'memo': record.memo,
-        'photoPaths': <String>[],
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
+      _pendingPhotos.remove(pendingKey);
+    }
+
+    await cleanPending(existing.data());
+    if (existing.exists) {
+      if (matches(existing.data()!)) return;
+      throw FirebaseException(
+        plugin: 'cloud_firestore',
+        code: 'already-exists',
+      );
+    }
+    final attemptedPhotos = <String>{};
+    if (photos.isNotEmpty) _pendingPhotos[pendingKey] = attemptedPhotos;
+    try {
+      for (final photo in photos) {
+        attemptedPhotos.add(photo.path);
+        await _photoStorage.upload(photo);
+      }
+      // トランザクションはオフライン時に失敗し、保留書き込みを残さない。
+      // 入力画面が同じIDで再試行することで、応答が途切れた場合も重複登録を防ぐ。
+      await _firestore.runTransaction((transaction) async {
+        final existing = await transaction.get(reference);
+        if (existing.exists) {
+          final data = existing.data()!;
+          if (matches(data)) {
+            return;
+          }
+          throw FirebaseException(
+            plugin: 'cloud_firestore',
+            code: 'already-exists',
+          );
+        }
+        transaction.set(reference, {
+          'recordedAt': Timestamp.fromDate(record.recordedAt),
+          'bloodSugarMgDl': record.bloodSugarMgDl,
+          'mealTiming': record.mealTiming.name,
+          'memo': record.memo,
+          'photoPaths': storedRecord.photoPaths,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       });
-    });
+      _pendingPhotos.remove(pendingKey);
+    } catch (error, stackTrace) {
+      if (attemptedPhotos.isNotEmpty) {
+        // 応答だけ途切れた場合、保存済みの写真を削除しない。
+        // 確認にも失敗した場合は破棄せず、同じID・写真で再試行する。
+        try {
+          final result = await reference.get(
+            const GetOptions(source: Source.server),
+          );
+          if (result.exists && matches(result.data()!)) {
+            _pendingPhotos.remove(pendingKey);
+            return;
+          }
+          await cleanPending(result.data());
+        } catch (_) {
+          throw PhotoStorageException(
+            '${recordErrorMessage(error)}\n'
+            '写真の保存状況を確認できませんでした。同じ入力画面でもう一度保存してください。',
+          );
+        }
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
   }
 
   @override
@@ -112,6 +201,7 @@ class FirestoreGlucoseRecordRepository implements GlucoseRecordRepository {
 }
 
 String recordErrorMessage(Object error) {
+  if (error is PhotoStorageException) return error.message;
   // ネイティブプラグインの追加はホットリスタートだけでは反映されない。
   if (error is MissingPluginException ||
       (error is PlatformException && error.code == 'channel-error')) {
@@ -120,6 +210,14 @@ String recordErrorMessage(Object error) {
   if (error is FirebaseException) {
     return switch (error.code) {
       'unavailable' || 'deadline-exceeded' => '通信できません。接続を確認して、もう一度お試しください。',
+      'retry-limit-exceeded' => '通信できません。接続を確認して、もう一度お試しください。',
+      'unauthorized' || 'unauthenticated'
+          when error.plugin == 'firebase_storage' =>
+        '写真にアクセスできません。ログイン状態とメール確認、Storageの設定を確認してください。',
+      'bucket-not-found' || 'project-not-found' || 'no-default-bucket' =>
+        '写真の保存先を利用できません。Firebase Storageのバケットと課金設定を確認してください。',
+      'quota-exceeded' =>
+        '写真の保存先の利用上限に達しました。Firebase Storageの使用量と課金設定を確認してください。',
       'permission-denied' ||
       'unauthenticated' => '記録にアクセスできません。ログイン状態とメール確認、Firestoreの設定を確認してください。',
       'already-exists' => '保存結果を確認できませんでした。カレンダーで記録を確認してください。',

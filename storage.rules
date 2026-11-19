@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && request.auth.token.email_verified == true;
+    }
+    match /users/{userId}/glucose_records/{recordId}/photos/{photoId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        && resource == null
+        && photoId.matches('[a-f0-9]{64}')
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      // 保存済みの写真は上書きしない。未確定の写真のみ後片付けを許可する。
+      allow update: if false;
+      allow delete: if isOwner(userId)
+        && (!firestore.exists(/databases/(default)/documents/users/$(userId)/glucose_records/$(recordId))
+          || !('users/' + userId + '/glucose_records/' + recordId + '/photos/' + photoId
+            in firestore.get(/databases/(default)/documents/users/$(userId)/glucose_records/$(recordId)).data.photoPaths));
+    }
+  }
+}

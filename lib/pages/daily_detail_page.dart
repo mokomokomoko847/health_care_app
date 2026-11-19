@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/glucose_record.dart';
+import '../widgets/record_photo.dart';
 
 class DailyDetailPage extends StatelessWidget {
   const DailyDetailPage({required this.date, required this.records, super.key});
@@ -329,15 +330,7 @@ class DailyDetailPage extends StatelessWidget {
   Widget _photo(String path) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: Image.network(
-        path,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          color: const Color(0xFFDCE2F7),
-          alignment: Alignment.center,
-          child: const Icon(Icons.restaurant, color: _secondary),
-        ),
-      ),
+      child: RecordPhoto(path: path),
     );
   }
 
